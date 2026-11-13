@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iniciar Sesión - Legend Barber Studio</title>
+  <link rel="stylesheet" href="login.css">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="dark-mode">
+
+  <!-- FONDO DE ESTRELLAS Y ESTRELLAS FUGACES -->
+  <div class="stars"></div>
+  <div class="shooting-star"></div>
+  <div class="shooting-star"></div>
+  <div class="shooting-star"></div>
+  <div class="shooting-star"></div>
+
+  <div class="login-container-grid">
+    
+    <!-- COLUMNA IZQUIERDA: LOGO CON MOVIMIENTO Y EFECTO LED -->
+    <div class="logo-showcase-section">
+      <div class="logo-glow-container">
+        <div class="led-ring"></div>
+        <div class="logo-wrapper">
+          <img src="../img/logo.jpg" alt="Legend Barber Studio Logo" class="animated-logo">
+        </div>
+      </div>
+      <div class="brand-text-container">
+        <h1>Legend Barber <span class="badge-gold">Studio</span></h1>
+        <p>Sistema de Gestión Multi-Sucursal Profesional</p>
+      </div>
+    </div>
+
+    <!-- COLUMNA DERECHA: LOGIN ORDENADO -->
+    <div class="login-form-section">
+      <div class="login-card">
+        <div class="form-header-mobile">
+          <h2>Iniciar Sesión</h2>
+        </div>
+        <p class="login-subtitle">Ingresa tus credenciales para acceder al panel</p>
+
+        <!-- Mensajes de Alerta dinámicos -->
+        <div id="alertMessage" class="alert hidden"></div>
+
+        <form id="formLogin" onsubmit="procesarLogin(event)">
+          <div class="form-group">
+            <label for="usuario"><i class="fa-solid fa-user"></i> Usuario o Email</label>
+            <div class="input-icon-wrapper">
+              <input type="text" id="usuario" class="form-control" placeholder="Ej: admin" required autofocus autocomplete="username">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="password"><i class="fa-solid fa-lock"></i> Contraseña</label>
+            <div class="input-icon-wrapper">
+              <input type="password" id="password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+              <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility()" title="Mostrar u ocultar contraseña">
+                <i class="fa-solid fa-eye" id="eyeIcon"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="form-options">
+            <label class="remember-me">
+              <input type="checkbox" id="recordar">
+              <span>Recordarme</span>
+            </label>
+            <a href="#" class="forgot-pass" onclick="recuperarPassword(event)">¿Olvidaste tu contraseña?</a>
+          </div>
+
+          <button type="submit" id="btnLogin" class="btn btn-primary btn-block btn-login">
+            <i class="fa-solid fa-right-to-bracket" id="btnLoginIcon"></i> 
+            <span id="btnLoginText">Iniciar Sesión</span>
+          </button>
+        </form>
+
+        <div class="login-footer">
+          <p>V:1.0 2026 Desarrollado JQ +593</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Botón flotante para volver arriba (útil en móviles) -->
+  <button type="button" id="btnScrollTop" class="btn-scroll-top" onclick="scrollToTop()" title="Volver arriba">
+    <i class="fa-solid fa-arrow-up"></i>
+  </button>
+
+  <script src="login.js"></script>
+</body>
+</html>
