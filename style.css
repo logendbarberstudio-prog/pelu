@@ -37,7 +37,6 @@ html, body {
 
 body {
   background-color: var(--bg-primary);
-  /* Imagen de fondo ajustada con contain */
   background-image: linear-gradient(rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.92)), url('logo.jpg');
   background-size: contain; 
   background-position: center;

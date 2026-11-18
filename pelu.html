@@ -46,7 +46,7 @@
       </div>
 
       <nav class="nav-menu"> 
-        <button class="nav-btn" data-tab="pos">
+        <button class="nav-btn active" data-tab="pos">
           <i class="fa-solid fa-cash-register"></i> <span>Caja & POS</span>
         </button>
         <button class="nav-btn" data-tab="clientes">
@@ -57,9 +57,6 @@
         </button>
         <button class="nav-btn" data-tab="inventario">
           <i class="fa-solid fa-boxes-stacked"></i> <span>Inventario & Servicios</span>
-        </button>
-        <button class="nav-btn active" data-tab="dashboard">
-          <i class="fa-solid fa-chart-pie"></i> <span>Dashboard</span>
         </button>
         <button class="nav-btn" data-tab="superadmin">
           <i class="fa-solid fa-user-shield"></i> <span>Super Admin</span> <i id="adminStatusIcon" class="fa-solid fa-lock" style="margin-left: auto;"></i>
@@ -80,8 +77,8 @@
           <i class="fa-solid fa-bars"></i>
         </button>
         <div class="header-title">
-          <h1 id="pageTitle">Dashboard Principal</h1>
-          <p id="pageSubTitle">Resumen diario y estadísticas de la sucursal</p>
+          <h1 id="pageTitle">Punto de Venta - Caja</h1>
+          <p id="pageSubTitle">Facturación y cobranza</p>
         </div>
         <div class="header-actions" style="display: flex; align-items: center; gap: 0.75rem;">
           <span id="badgeAdminActive" class="badge-status badge-Confirmada" style="display: none;">
@@ -94,62 +91,8 @@
       </header>
 
       <div class="content-body">
-        <!-- MODULO: DASHBOARD -->
-        <section id="mod-dashboard" class="module active">
-          <div class="kpi-grid">
-            <div class="kpi-card">
-              <div class="kpi-icon bg-emerald"><i class="fa-solid fa-dollar-sign"></i></div>
-              <div class="kpi-info">
-                <span>Ingresos Hoy</span>
-                <h3 id="dashIngresos">$0.00</h3>
-              </div>
-            </div>
-            <div class="kpi-card">
-              <div class="kpi-icon bg-purple"><i class="fa-solid fa-user-check"></i></div>
-              <div class="kpi-info">
-                <span>Estilistas Activos</span>
-                <h3 id="dashEstilistas">0</h3>
-              </div>
-            </div>
-            <div class="kpi-card">
-              <div class="kpi-icon bg-amber"><i class="fa-solid fa-triangle-exclamation"></i></div>
-              <div class="kpi-info">
-                <span>Stock Bajo</span>
-                <h3 id="dashStockBajo">0</h3>
-              </div>
-            </div>
-          </div>
-
-          <!-- Historial de Ventas -->
-          <div class="dashboard-charts-grid">
-            <div class="card" style="grid-column: 1 / -1;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
-                <h3 style="margin: 0;"><i class="fa-solid fa-receipt"></i> Historial de Ventas / Facturas Recientes</h3>
-                <button class="btn btn-success btn-sm" onclick="exportarVentasExcel()">
-                  <i class="fa-solid fa-file-excel"></i> Exportar a Excel
-                </button>
-              </div>
-              <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Cliente</th>
-                      <th>Estilista</th>
-                      <th>Método de Pago</th>
-                      <th>Total</th>
-                      <th>Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody id="dashTablaVentas"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <!-- MODULO: CAJA & POS -->
-        <section id="mod-pos" class="module">
+        <section id="mod-pos" class="module active">
           <div class="pos-layout">
             <div class="pos-catalog">
               <div class="card">
@@ -308,7 +251,6 @@
                   <tr>
                     <th>Nombre</th>
                     <th>Teléfono</th>
-                    <th>Email</th>
                     <th>F. Nacimiento</th>
                     <th>F. Creación</th>
                     <th>Fidelidad / Cortes</th>
@@ -322,12 +264,15 @@
           </div>
         </section>
 
-        <!-- MODULO: SUPER ADMIN (CON REPORTES INTEGRADOS) -->
+        <!-- MODULO: SUPER ADMIN (CON DASHBOARD Y REPORTES INTEGRADOS) -->
         <section id="mod-superadmin" class="module">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
             <div class="pos-tabs" style="margin: 0;">
               <button class="tab-link active" onclick="cambiarSubmodSuperAdmin('global', this)">
                 <i class="fa-solid fa-city"></i> Control por Sucursales
+              </button>
+              <button class="tab-link" onclick="cambiarSubmodSuperAdmin('dashboard', this)">
+                <i class="fa-solid fa-chart-pie"></i> Dashboard & Facturación
               </button>
               <button class="tab-link" onclick="cambiarSubmodSuperAdmin('reportes', this)">
                 <i class="fa-solid fa-chart-line"></i> Reportes & Estadísticas
@@ -347,7 +292,61 @@
             <div id="superAdminContainer"></div>
           </div>
 
-          <!-- SUBMÓDULO 2: REPORTES Y GRÁFICOS INTERACTIVOS DE SUPER ADMIN -->
+          <!-- SUBMÓDULO 2: DASHBOARD INTEGRADO (KPIs y Tabla de Facturas Recientes) -->
+          <div id="submod-superadmin-dashboard" style="display: none;">
+            <div class="kpi-grid">
+              <div class="kpi-card">
+                <div class="kpi-icon bg-emerald"><i class="fa-solid fa-dollar-sign"></i></div>
+                <div class="kpi-info">
+                  <span>Ingresos Hoy (Sucursal Activa)</span>
+                  <h3 id="dashIngresos">$0.00</h3>
+                </div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-icon bg-purple"><i class="fa-solid fa-user-check"></i></div>
+                <div class="kpi-info">
+                  <span>Estilistas Activos</span>
+                  <h3 id="dashEstilistas">0</h3>
+                </div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-icon bg-amber"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div class="kpi-info">
+                  <span>Stock Bajo</span>
+                  <h3 id="dashStockBajo">0</h3>
+                </div>
+              </div>
+            </div>
+
+            <!-- Historial de Ventas -->
+            <div class="dashboard-charts-grid">
+              <div class="card" style="grid-column: 1 / -1;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
+                  <h3 style="margin: 0;"><i class="fa-solid fa-receipt"></i> Historial de Ventas / Facturas Recientes</h3>
+                  <button class="btn btn-success btn-sm" onclick="exportarVentasExcel()">
+                    <i class="fa-solid fa-file-excel"></i> Exportar a Excel
+                  </button>
+                </div>
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>Estilista</th>
+                        <th>Método de Pago</th>
+                        <th>Total</th>
+                        <th>Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dashTablaVentas"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SUBMÓDULO 3: REPORTES Y GRÁFICOS INTERACTIVOS DE SUPER ADMIN -->
           <div id="submod-superadmin-reportes" style="display: none;">
             <div class="card" style="margin-bottom: 1.5rem;">
               <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
@@ -561,7 +560,7 @@
     </div>
   </div>
 
-  <!-- MODAL: CLIENTE (CREAR / EDITAR) -->
+  <!-- MODAL: CLIENTE (CREAR / EDITAR) - SIN EMAIL -->
   <div class="modal" id="modalCliente">
     <div class="modal-content">
       <div class="modal-header">
@@ -577,10 +576,6 @@
         <div class="form-group">
           <label>Teléfono</label>
           <input type="text" id="cliTelefono" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="cliEmail" class="form-control">
         </div>
         <div class="form-group">
           <label>Fecha de Nacimiento</label>
