@@ -1,6 +1,3 @@
-// ==========================================
-// CONFIGURACIÓN DE SUPABASE
-// ==========================================
 const SUPABASE_URL = 'https://rsfkxwopwtcyjpkstpmp.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_hJFsLmxBducinC6pH-hDQw_Uxyj24eZ';
 
@@ -24,7 +21,7 @@ async function cargarDatosDesdeSupabase() {
     if (typeof supabase !== 'undefined') {
       supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } else {
-      console.error("El SDK de Supabase no está cargado.");
+      console.error("El SDK de Supabase não está cargado.");
       return;
     }
 
@@ -119,7 +116,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderizarModulo('pos');
 });
 
-// Configuración robusta del menú móvil
 function setupNavegacion() {
   const navBtns = document.querySelectorAll('.nav-btn');
   navBtns.forEach(btn => {
@@ -604,6 +600,61 @@ function formatearTelefonoWhatsApp(telefono) {
   return limpio;
 }
 
+// Búsqueda dinámica de clientes en Caja & POS
+function filtrarClientesPOS(query) {
+  const dropdown = document.getElementById('posClientDropdown');
+  if (!dropdown) return;
+
+  const texto = query.toLowerCase().trim();
+  
+  if (texto === '') {
+    dropdown.innerHTML = '';
+    dropdown.classList.add('hidden');
+    document.getElementById('posClienteIdSeleccionado').value = '';
+    return;
+  }
+
+  const coincidencias = appData.clientes.filter(c => 
+    c.nombre.toLowerCase().includes(texto) || (c.telefono && c.telefono.includes(texto))
+  );
+
+  if (coincidencias.length === 0) {
+    dropdown.innerHTML = `<div class="client-dropdown-item" style="color: var(--text-secondary);">No se encontraron clientes</div>`;
+    dropdown.classList.remove('hidden');
+    return;
+  }
+
+  dropdown.innerHTML = coincidencias.map(c => {
+    const acum = c.serviciosAcumulados || 0;
+    const pct = Math.round((acum / META_SERVICIOS_GRATIS) * 100);
+    const tag = acum >= META_SERVICIOS_GRATIS ? '🎁 ¡CORTE GRATIS!' : `${pct}% (${acum}/8)`;
+    
+    return `
+      <div class="client-dropdown-item" onclick="seleccionarClientePOS('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')">
+        <span><strong>${c.nombre}</strong> (${c.telefono || 'S/N'})</span>
+        <small style="opacity: 0.8;">[${tag}]</small>
+      </div>
+    `;
+  }).join('');
+
+  dropdown.classList.remove('hidden');
+}
+
+function seleccionarClientePOS(id, nombre) {
+  document.getElementById('posBuscadorCliente').value = nombre;
+  document.getElementById('posClienteIdSeleccionado').value = id;
+  const dropdown = document.getElementById('posClientDropdown');
+  if (dropdown) dropdown.classList.add('hidden');
+}
+
+document.addEventListener('click', (e) => {
+  const buscador = document.getElementById('posBuscadorCliente');
+  const dropdown = document.getElementById('posClientDropdown');
+  if (buscador && dropdown && !buscador.contains(e.target) && !dropdown.contains(e.target)) {
+    dropdown.classList.add('hidden');
+  }
+});
+
 async function actualizarFidelidadCliente(clienteId, nuevosServicios) {
   if (!clienteId) return false;
   const cliente = appData.clientes.find(c => c.id === clienteId);
@@ -722,7 +773,7 @@ ${textoFidelidad}
 async function procesarPagoPOS() {
   if (carritoPOS.length === 0) return alert('El carrito está vacío');
   const total = carritoPOS.reduce((sum, i) => sum + (i.precio * i.cantidad), 0);
-  const clienteId = document.getElementById('posCliente').value || null;
+  const clienteId = document.getElementById('posClienteIdSeleccionado').value || null;
   
   const cantidadServiciosComprados = carritoPOS
     .filter(item => item.tipo === 'servicio')
@@ -764,6 +815,8 @@ async function procesarPagoPOS() {
   carritoPOS = [];
   document.getElementById('posEfectivoRecibido').value = '';
   document.getElementById('posVuelto').innerText = '$0.00';
+  if (document.getElementById('posBuscadorCliente')) document.getElementById('posBuscadorCliente').value = '';
+  if (document.getElementById('posClienteIdSeleccionado')) document.getElementById('posClienteIdSeleccionado').value = '';
   renderizarCarritoPOS();
 }
 
@@ -1180,19 +1233,14 @@ function abrirModalSucursal() {
 }
 
 function poblarSelects() {
-  const posCli = document.getElementById('posCliente');
   const posEst = document.getElementById('posEstilista');
   const estSuc = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva);
 
-  if (posCli) {
-    posCli.innerHTML = `<option value="">Cliente Ocasional (Sin WhatsApp)</option>` + 
-      appData.clientes.map(c => {
-        const acum = c.serviciosAcumulados || 0;
-        const pct = Math.round((acum / META_SERVICIOS_GRATIS) * 100);
-        const tag = acum >= META_SERVICIOS_GRATIS ? '🎁 ¡CORTE GRATIS!' : `${pct}% (${acum}/8)`;
-        return `<option value="${c.id}">${c.nombre} (${c.telefono || 'S/N'}) - [${tag}]</option>`;
-      }).join('');
-  }
+  const buscadorCli = document.getElementById('posBuscadorCliente');
+  const inputIdCli = document.getElementById('posClienteIdSeleccionado');
+  if (buscadorCli) buscadorCli.value = '';
+  if (inputIdCli) inputIdCli.value = '';
+
   if (posEst) {
     posEst.innerHTML = `<option value="">Sin Asignar</option>` + 
       estSuc.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');

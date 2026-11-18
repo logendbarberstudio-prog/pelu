@@ -11,7 +11,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="dark-mode">
-  <!-- Fondo Animado de Líneas de Colores -->
   <div class="lines">
     <div class="line"></div>
     <div class="line"></div>
@@ -25,11 +24,9 @@
     <div class="line"></div>
   </div>
 
-  <!-- Overlay para cerrar el menú en móviles/tablets -->
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="cerrarMenuMovil()"></div>
 
   <div class="app-container">
-    <!-- Sidebar / Navegación Principal -->
     <aside class="sidebar" id="sidebar">
       <div class="brand">
         <i class="fa-solid fa-scissors brand-icon"></i>
@@ -37,7 +34,6 @@
         <button class="mobile-close-btn" onclick="cerrarMenuMovil()"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
-      <!-- Selector, Creador y Eliminador de Sucursales -->
       <div class="branch-selector-container">
         <label for="sucursalSelect"><i class="fa-solid fa-store"></i> Sucursal Activa:</label>
         <div class="branch-input-group">
@@ -76,7 +72,6 @@
       </div>
     </aside>
 
-    <!-- Área de Contenido Principal -->
     <main class="main-content">
       <header class="top-header">
         <button class="mobile-toggle-btn" id="mobileMenuBtn">
@@ -115,10 +110,15 @@
             <div class="pos-cart">
               <div class="card">
                 <h3>Comprobante de Venta</h3>
-                <div class="form-group margin-v">
-                  <label>Cliente:</label>
-                  <select id="posCliente" class="form-control"></select>
+                
+                <!-- Buscador interactivo de clientes en POS -->
+                <div class="form-group margin-v" style="position: relative;">
+                  <label><i class="fa-solid fa-magnifying-glass"></i> Buscar Cliente (Nombre o Teléfono):</label>
+                  <input type="text" id="posBuscadorCliente" class="form-control" placeholder="Escribe para buscar cliente..." oninput="filtrarClientesPOS(this.value)" autocomplete="off">
+                  <input type="hidden" id="posClienteIdSeleccionado" value="">
+                  <div id="posClientDropdown" class="client-search-dropdown hidden"></div>
                 </div>
+
                 <div class="form-group margin-v">
                   <label>Estilista Atendido:</label>
                   <select id="posEstilista" class="form-control"></select>

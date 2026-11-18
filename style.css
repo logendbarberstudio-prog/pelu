@@ -95,7 +95,6 @@ body.light-mode {
   position: relative;
 }
 
-/* Sidebar Adaptable */
 .sidebar {
   width: 270px;
   background-color: var(--bg-secondary);
@@ -621,6 +620,46 @@ body.light-mode {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 1.25rem;
+}
+
+/* Estilos para el autocompletado de clientes en POS */
+.client-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+  margin-top: 4px;
+}
+
+.client-search-dropdown.hidden {
+  display: none;
+}
+
+.client-dropdown-item {
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.9rem;
+  transition: background 0.2s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.client-dropdown-item:hover {
+  background-color: var(--accent);
+  color: #fff;
+}
+
+.client-dropdown-item:last-child {
+  border-bottom: none;
 }
 
 @media (max-width: 1024px) {
