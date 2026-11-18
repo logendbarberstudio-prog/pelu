@@ -320,6 +320,19 @@ function renderizarSuperAdmin() {
   const container = document.getElementById('superAdminContainer');
   if (!container) return;
 
+  // Cálculo de las ganancias totales globales de todas las sucursales
+  let gananciasGlobalesTotales = 0;
+  appData.sucursales.forEach(sucursal => {
+    const ventasSuc = appData.ventas.filter(v => v.sucursalId === sucursal.id);
+    const totalGanancias = ventasSuc.reduce((sum, v) => sum + v.total, 0);
+    gananciasGlobalesTotales += totalGanancias;
+  });
+
+  const elGananciasGlobales = document.getElementById('gananciasTotalesCadena');
+  if (elGananciasGlobales) {
+    elGananciasGlobales.innerText = `$${gananciasGlobalesTotales.toFixed(2)}`;
+  }
+
   container.innerHTML = appData.sucursales.map(sucursal => {
     const ventasSuc = appData.ventas.filter(v => v.sucursalId === sucursal.id);
     const totalGanancias = ventasSuc.reduce((sum, v) => sum + v.total, 0);
@@ -334,7 +347,7 @@ function renderizarSuperAdmin() {
             <small style="color: var(--text-secondary);">${sucursal.direccion}</small>
           </div>
           <div style="text-align: right;">
-            <span style="font-size: 0.8rem; color: var(--text-secondary);">Ganancias Totales:</span>
+            <span style="font-size: 0.8rem; color: var(--text-secondary);">Ganancias Sucursal:</span>
             <h3 style="color: var(--emerald); font-size: 1.3rem;">$${totalGanancias.toFixed(2)}</h3>
           </div>
         </div>
@@ -1078,7 +1091,7 @@ function renderizarClientes() {
 
   tbody.innerHTML = filtrados.map(c => {
     const totalServicios = calcularServiciosCliente(c.id);
-    const metaCortes = 10;
+    const metaCortes = 8;
     const pctInt = Math.min(100, Math.round((totalServicios / metaCortes) * 100));
     const esGratis = totalServicios >= metaCortes;
 

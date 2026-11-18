@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Sistema de Gestión Multi-Sucursal - Peluquería & Barbería</title>
   <link rel="stylesheet" href="style.css">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -23,12 +23,16 @@
     <div class="line"></div>
   </div>
 
+  <!-- Overlay para cerrar el menú en móviles/tablets -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="cerrarMenuMovil()"></div>
+
   <div class="app-container">
     <!-- Sidebar / Navegación Principal -->
     <aside class="sidebar" id="sidebar">
       <div class="brand">
         <i class="fa-solid fa-scissors brand-icon"></i>
         <h2>Leguend Barber Studio <span class="badge">JQ</span></h2>
+        <button class="mobile-close-btn" onclick="cerrarMenuMovil()"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
       <!-- Selector, Creador y Eliminador de Sucursales -->
@@ -73,19 +77,19 @@
     <!-- Área de Contenido Principal -->
     <main class="main-content">
       <header class="top-header">
-        <button class="mobile-toggle-btn" id="mobileMenuBtn">
+        <button class="mobile-toggle-btn" id="mobileMenuBtn" onclick="abrirMenuMovil()">
           <i class="fa-solid fa-bars"></i>
         </button>
         <div class="header-title">
           <h1 id="pageTitle">Punto de Venta - Caja</h1>
           <p id="pageSubTitle">Facturación y cobranza</p>
         </div>
-        <div class="header-actions" style="display: flex; align-items: center; gap: 0.75rem;">
+        <div class="header-actions" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
           <span id="badgeAdminActive" class="badge-status badge-Confirmada" style="display: none;">
-            <i class="fa-solid fa-shield"></i> Modo Super Admin Activo
+            <i class="fa-solid fa-shield"></i> <span class="hide-xs">Modo Super Admin Activo</span>
           </span>
           <button id="btnCerrarSuperAdmin" class="btn btn-danger btn-sm" onclick="cerrarSesionSuperAdmin()" style="display: none;">
-            <i class="fa-solid fa-right-from-bracket"></i> Salir de Super Admin
+            <i class="fa-solid fa-right-from-bracket"></i> <span class="hide-xs">Salir</span>
           </button>
         </div>
       </header>
@@ -156,7 +160,7 @@
 
         <!-- MODULO: ESTILISTAS -->
         <section id="mod-estilistas" class="module">
-          <div class="toolbar-card" style="justify-content: flex-end; gap: 0.5rem;">
+          <div class="toolbar-card" style="justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap;">
             <button class="btn btn-success" onclick="exportarEstilistasExcel()">
               <i class="fa-solid fa-file-excel"></i> Exportar a Excel
             </button>
@@ -231,11 +235,11 @@
         <!-- MODULO: CLIENTES -->
         <section id="mod-clientes" class="module">
           <div class="toolbar-card" style="flex-wrap: wrap; gap: 1rem;">
-            <div class="filter-group" style="display: flex; gap: 0.75rem; flex: 1; min-width: 280px;">
+            <div class="filter-group" style="display: flex; gap: 0.75rem; flex: 1; min-width: 280px; flex-wrap: wrap;">
               <input type="text" id="buscarCliente" class="form-control" placeholder="Buscar por nombre o teléfono..." onkeyup="renderizarClientes()">
               <input type="date" id="filtroFechaCreacion" class="form-control" onchange="renderizarClientes()" title="Filtrar por fecha de creación">
             </div>
-            <div style="display: flex; gap: 0.5rem;">
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
               <button class="btn btn-success" onclick="exportarClientesExcel()">
                 <i class="fa-solid fa-file-excel"></i> Exportar a Excel
               </button>
@@ -267,7 +271,7 @@
         <!-- MODULO: SUPER ADMIN (CON DASHBOARD Y REPORTES INTEGRADOS) -->
         <section id="mod-superadmin" class="module">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
-            <div class="pos-tabs" style="margin: 0;">
+            <div class="pos-tabs" style="margin: 0; flex-wrap: wrap;">
               <button class="tab-link active" onclick="cambiarSubmodSuperAdmin('global', this)">
                 <i class="fa-solid fa-city"></i> Control por Sucursales
               </button>
@@ -289,6 +293,16 @@
               <h3><i class="fa-solid fa-user-shield"></i> Panel Super Admin - Vista Global por Sucursales</h3>
               <p style="color: var(--text-secondary); font-size: 0.85rem;">Control consolidado de ganancias, personal, inventario y servicios separados por sucursal.</p>
             </div>
+            
+            <!-- Tarjeta de Ganancias Totales de la Cadena -->
+            <div class="kpi-card" style="margin-bottom: 1.5rem; background: var(--bg-card); border-left: 4px solid var(--emerald);">
+              <div class="kpi-icon bg-emerald"><i class="fa-solid fa-vault"></i></div>
+              <div class="kpi-info">
+                <span>Ganancias Totales Consolidadas (Todas las Sucursales)</span>
+                <h3 id="gananciasTotalesCadena" style="color: var(--emerald); font-size: 1.5rem;">$0.00</h3>
+              </div>
+            </div>
+
             <div id="superAdminContainer"></div>
           </div>
 
@@ -597,7 +611,7 @@
   <div class="modal" id="modalTicket">
     <div class="modal-content modal-sm text-center">
       <div class="ticket-header">
-        <h2>StyleStudio PRO</h2>
+        <h2>Leguend Barber Studio</h2>
         <p id="ticketSucursal">Sucursal</p>
         <p id="ticketFechaHora"></p>
       </div>
