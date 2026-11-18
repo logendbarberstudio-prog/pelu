@@ -1,4 +1,31 @@
-function procesarLogin(event) {
+// ==========================================
+// CONFIGURACIÓN DE SUPABASE PARA LOGIN
+// ==========================================
+const SUPABASE_URL = 'https://rsfkxwopwtcyjpkstpmp.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_hJFsLmxBducinC6pH-hDQw_Uxyj24eZ';
+
+let supabaseClient = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof supabase !== 'undefined') {
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } else {
+    console.error("El SDK de Supabase no se ha cargado correctamente en el HTML.");
+  }
+
+  window.addEventListener('scroll', () => {
+    const btnScroll = document.getElementById('btnScrollTop');
+    if (btnScroll) {
+      if (window.scrollY > 150) {
+        btnScroll.classList.add('visible');
+      } else {
+        btnScroll.classList.remove('visible');
+      }
+    }
+  });
+});
+
+async function procesarLogin(event) {
   event.preventDefault();
 
   const usuarioInput = document.getElementById('usuario').value.trim();
@@ -7,7 +34,6 @@ function procesarLogin(event) {
   const btnText = document.getElementById('btnLoginText');
   const btnIcon = document.getElementById('btnLoginIcon');
 
-  // Validaciones directas en pantalla
   if (!usuarioInput) {
     mostrarAlerta('Por favor, ingresa tu usuario o correo electrónico.', 'warning');
     document.getElementById('usuario').focus();
@@ -20,40 +46,58 @@ function procesarLogin(event) {
     return;
   }
 
-  // Activar estado de carga en el botón
+  if (!supabaseClient) {
+    mostrarAlerta('Error: El cliente de Supabase no está inicializado.', 'danger');
+    return;
+  }
+
   btnLogin.disabled = true;
   btnIcon.className = "fa-solid fa-spinner fa-spin";
-  btnText.textContent = "Verificando...";
+  btnText.textContent = "Verificando en base de datos...";
 
-  // Credenciales por defecto
-  const USUARIO_CORRECTO = "admin";
-  const PASSWORD_CORRECTO = "123456";
+  try {
+    const { data, error } = await supabaseClient
+      .from('usuarios')
+      .select('*')
+      .eq('usuario', usuarioInput)
+      .maybeSingle();
 
-  setTimeout(() => {
-    if (usuarioInput === USUARIO_CORRECTO && passwordInput === PASSWORD_CORRECTO) {
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data) {
+      throw new Error('Usuario no encontrado.');
+    }
+
+    if (data.password === passwordInput) {
       mostrarAlerta('¡Credenciales correctas! Redirigiendo al panel principal...', 'success');
       
       localStorage.setItem('sessionActive', 'true');
-      localStorage.setItem('loggedUser', usuarioInput);
+      localStorage.setItem('loggedUser', data.usuario);
+      localStorage.setItem('userRole', data.rol || 'admin');
 
       setTimeout(() => {
-        window.location.href = '../pelu.html';
+        window.location.href = 'pelu.html';
       }, 1200);
 
     } else {
-      mostrarAlerta('Usuario o contraseña incorrectos. Verifica tus datos e intentalo de nuevo.', 'danger');
-      
-      // Restaurar el botón en caso de error
-      btnLogin.disabled = false;
-      btnIcon.className = "fa-solid fa-right-to-bracket";
-      btnText.textContent = "Iniciar Sesión";
+      throw new Error('Contraseña incorrecta.');
     }
-  }, 800);
+
+  } catch (err) {
+    console.error('Error de autenticación:', err.message);
+    mostrarAlerta('Usuario o contraseña incorrectos. Verifica tus datos e inténtalo de nuevo.', 'danger');
+    
+    btnLogin.disabled = false;
+    btnIcon.className = "fa-solid fa-right-to-bracket";
+    btnText.textContent = "Iniciar Sesión";
+  }
 }
 
-// Función para mostrar mensajes de estado con íconos descriptivos
 function mostrarAlerta(mensaje, tipo) {
   const alertMsg = document.getElementById('alertMessage');
+  if (!alertMsg) return;
   alertMsg.className = `alert alert-${tipo}`;
   
   let icon = 'fa-circle-info';
@@ -68,12 +112,14 @@ function togglePasswordVisibility() {
   const passInput = document.getElementById('password');
   const eyeIcon = document.getElementById('eyeIcon');
 
-  if (passInput.type === 'password') {
-    passInput.type = 'text';
-    eyeIcon.className = 'fa-solid fa-eye-slash';
-  } else {
-    passInput.type = 'password';
-    eyeIcon.className = 'fa-solid fa-eye';
+  if (passInput && eyeIcon) {
+    if (passInput.type === 'password') {
+      passInput.type = 'text';
+      eyeIcon.className = 'fa-solid fa-eye-slash';
+    } else {
+      passInput.type = 'password';
+      eyeIcon.className = 'fa-solid fa-eye';
+    }
   }
 }
 
@@ -81,16 +127,6 @@ function recuperarPassword(e) {
   e.preventDefault();
   mostrarAlerta('Para restablecer tu contraseña, contacta directamente con el Administrador del Sistema.', 'warning');
 }
-
-// Control del botón flotante para ir arriba en dispositivos móviles
-window.addEventListener('scroll', () => {
-  const btnScroll = document.getElementById('btnScrollTop');
-  if (window.scrollY > 150) {
-    btnScroll.classList.add('visible');
-  } else {
-    btnScroll.classList.remove('visible');
-  }
-});
 
 function scrollToTop() {
   window.scrollTo({

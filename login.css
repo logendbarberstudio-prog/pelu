@@ -35,7 +35,7 @@ body {
   justify-content: center;
   padding: 1.5rem 1rem;
   overflow-x: hidden;
-  overflow-y: auto; /* Permite scroll vertical cuando la pantalla es reducida */
+  overflow-y: auto;
   position: relative;
 }
 
@@ -321,32 +321,46 @@ body {
   width: 100%;
 }
 
-/* Caja de Ayuda para Credenciales */
-.demo-info-box {
-  margin-top: 1.25rem;
-  padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px dashed var(--border-color);
-  border-radius: 8px;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  text-align: center;
-}
-
-.demo-info-box code {
-  background: rgba(0, 0, 0, 0.4);
-  color: var(--accent-gold);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
+/* Footer & Botón WhatsApp */
 .login-footer {
   margin-top: 1.5rem;
-  text-align: center;
   font-size: 0.73rem;
   color: var(--text-secondary);
   border-top: 1px solid var(--border-color);
   padding-top: 1rem;
+}
+
+.footer-content-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-whatsapp-footer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: rgba(37, 211, 102, 0.15);
+  color: #25d366;
+  border: 1px solid rgba(37, 211, 102, 0.4);
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.btn-whatsapp-footer i {
+  font-size: 0.95rem;
+}
+
+.btn-whatsapp-footer:hover {
+  background-color: #25d366;
+  color: #ffffff;
+  border-color: #25d366;
+  box-shadow: 0 0 10px rgba(37, 211, 102, 0.4);
 }
 
 /* Botón flotante Ir Arriba */
@@ -445,9 +459,7 @@ body {
   animation: twinkle 6s infinite linear reverse;
 }
 
-/* MEDIA QUERIES PARA ADAPTABILIDAD RESPONSIVA (MÓVILES Y TABLETS) */
-
-/* Tablets y pantallas medianas */
+/* MEDIA QUERIES RESPONSIVAS */
 @media (max-width: 992px) {
   .login-container-grid {
     grid-template-columns: 1fr;
@@ -471,7 +483,6 @@ body {
   }
 }
 
-/* Celulares y dispositivos pequeños */
 @media (max-width: 480px) {
   body {
     padding: 0.75rem;

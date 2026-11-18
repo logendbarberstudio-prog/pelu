@@ -6,6 +6,8 @@
   <title>Iniciar Sesión - Legend Barber Studio</title>
   <link rel="stylesheet" href="login.css">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- SDK de Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="dark-mode">
 
@@ -23,7 +25,7 @@
       <div class="logo-glow-container">
         <div class="led-ring"></div>
         <div class="logo-wrapper">
-          <img src="../img/logo.jpg" alt="Legend Barber Studio Logo" class="animated-logo">
+          <img src="img/logo.jpg" alt="Legend Barber Studio Logo" class="animated-logo">
         </div>
       </div>
       <div class="brand-text-container">
@@ -76,7 +78,17 @@
         </form>
 
         <div class="login-footer">
-          <p>V:1.0 2026 Desarrollado JQ +593</p>
+          <div class="footer-content-row">
+            <span>V:1.01 2026 Desarrollado JQ</span>
+            <!-- Botón de WhatsApp al lado de la versión -->
+            <a href="https://wa.me/593983279145?text=Hola%20Jefferson,%20necesito%20soporte%20con%20el%20sistema%20de%20gestión." 
+               target="_blank" 
+               rel="noopener noreferrer" 
+               class="btn-whatsapp-footer" 
+               title="Contactar por WhatsApp">
+              <i class="fa-brands fa-whatsapp"></i> Soporte
+            </a>
+          </div>
         </div>
       </div>
     </div>

@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="style.css">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SDK de Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="dark-mode">
   <!-- Fondo Animado de Líneas de Colores -->
@@ -138,7 +140,6 @@
                   </select>
                 </div>
 
-                <!-- Sección exclusiva para cálculo de vuelto en Efectivo -->
                 <div id="seccionEfectivo" style="background: var(--bg-primary); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid var(--border-color);">
                   <div class="form-group" style="margin-bottom: 0.5rem;">
                     <label>Efectivo Recibido ($):</label>
@@ -151,7 +152,7 @@
                 </div>
 
                 <button class="btn btn-success btn-block margin-top" onclick="procesarPagoPOS()">
-                  <i class="fa-solid fa-receipt"></i> Procesar Pago
+                  <i class="fa-solid fa-receipt"></i> Procesar Pago y Enviar WhatsApp
                 </button>
               </div>
             </div>
@@ -178,7 +179,6 @@
             <button class="tab-link" onclick="cambiarTabInventario('servicios', this)">Gestión de Servicios</button>
           </div>
 
-          <!-- SECCION PRODUCTOS -->
           <div id="submod-productos" class="sub-module">
             <div class="toolbar-card text-right">
               <button class="btn btn-primary admin-only" onclick="abrirModalProducto()">
@@ -193,9 +193,7 @@
                       <th>Producto</th>
                       <th>Categoría</th>
                       <th>Precio</th>
-                      <th>F. Creación</th>
-                      <th>Stock / Capacidad</th>
-                      <th>Estado</th>
+                      <th>Stock</th>
                       <th>Acciones</th>
                     </tr>
                   </thead>
@@ -205,7 +203,6 @@
             </div>
           </div>
 
-          <!-- SECCION SERVICIOS -->
           <div id="submod-servicios" class="sub-module" style="display: none;">
             <div class="toolbar-card text-right">
               <button class="btn btn-primary admin-only" onclick="abrirModalServicio()">
@@ -219,9 +216,7 @@
                     <tr>
                       <th>Nombre del Servicio</th>
                       <th>Precio ($)</th>
-                      <th>F. Creación</th>
-                      <th>Uso / Popularidad</th>
-                      <th>Tipo</th>
+                      <th>Popularidad</th>
                       <th>Acciones</th>
                     </tr>
                   </thead>
@@ -237,12 +232,8 @@
           <div class="toolbar-card" style="flex-wrap: wrap; gap: 1rem;">
             <div class="filter-group" style="display: flex; gap: 0.75rem; flex: 1; min-width: 280px; flex-wrap: wrap;">
               <input type="text" id="buscarCliente" class="form-control" placeholder="Buscar por nombre o teléfono..." onkeyup="renderizarClientes()">
-              <input type="date" id="filtroFechaCreacion" class="form-control" onchange="renderizarClientes()" title="Filtrar por fecha de creación">
             </div>
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-              <button class="btn btn-success" onclick="exportarClientesExcel()">
-                <i class="fa-solid fa-file-excel"></i> Exportar a Excel
-              </button>
               <button class="btn btn-primary" onclick="abrirModalCliente()">
                 <i class="fa-solid fa-person-plus"></i> Nuevo Cliente
               </button>
@@ -255,9 +246,8 @@
                   <tr>
                     <th>Nombre</th>
                     <th>Teléfono</th>
+                    <th>Fidelidad (Meta: 8 Servicios)</th>
                     <th>F. Nacimiento</th>
-                    <th>F. Creación</th>
-                    <th>Fidelidad / Cortes</th>
                     <th>Notas</th>
                     <th>Acciones</th>
                   </tr>
@@ -268,7 +258,7 @@
           </div>
         </section>
 
-        <!-- MODULO: SUPER ADMIN (CON DASHBOARD Y REPORTES INTEGRADOS) -->
+        <!-- MODULO: SUPER ADMIN -->
         <section id="mod-superadmin" class="module">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
             <div class="pos-tabs" style="margin: 0; flex-wrap: wrap;">
@@ -287,14 +277,10 @@
             </button>
           </div>
 
-          <!-- SUBMÓDULO 1: VISTA DE SUCURSALES -->
           <div id="submod-superadmin-global">
             <div class="card" style="margin-bottom: 1.5rem;">
               <h3><i class="fa-solid fa-user-shield"></i> Panel Super Admin - Vista Global por Sucursales</h3>
-              <p style="color: var(--text-secondary); font-size: 0.85rem;">Control consolidado de ganancias, personal, inventario y servicios separados por sucursal.</p>
             </div>
-            
-            <!-- Tarjeta de Ganancias Totales de la Cadena -->
             <div class="kpi-card" style="margin-bottom: 1.5rem; background: var(--bg-card); border-left: 4px solid var(--emerald);">
               <div class="kpi-icon bg-emerald"><i class="fa-solid fa-vault"></i></div>
               <div class="kpi-info">
@@ -302,11 +288,9 @@
                 <h3 id="gananciasTotalesCadena" style="color: var(--emerald); font-size: 1.5rem;">$0.00</h3>
               </div>
             </div>
-
             <div id="superAdminContainer"></div>
           </div>
 
-          <!-- SUBMÓDULO 2: DASHBOARD INTEGRADO (KPIs y Tabla de Facturas Recientes) -->
           <div id="submod-superadmin-dashboard" style="display: none;">
             <div class="kpi-grid">
               <div class="kpi-card">
@@ -331,91 +315,60 @@
                 </div>
               </div>
             </div>
-
-            <!-- Historial de Ventas -->
-            <div class="dashboard-charts-grid">
-              <div class="card" style="grid-column: 1 / -1;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
-                  <h3 style="margin: 0;"><i class="fa-solid fa-receipt"></i> Historial de Ventas / Facturas Recientes</h3>
-                  <button class="btn btn-success btn-sm" onclick="exportarVentasExcel()">
-                    <i class="fa-solid fa-file-excel"></i> Exportar a Excel
-                  </button>
-                </div>
-                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                  <table class="data-table">
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Cliente</th>
-                        <th>Estilista</th>
-                        <th>Método de Pago</th>
-                        <th>Total</th>
-                        <th>Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody id="dashTablaVentas"></tbody>
-                  </table>
-                </div>
+            <div class="card">
+              <h3><i class="fa-solid fa-receipt"></i> Historial de Ventas / Facturas Recientes</h3>
+              <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Cliente</th>
+                      <th>Estilista</th>
+                      <th>Método de Pago</th>
+                      <th>Total</th>
+                      <th>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashTablaVentas"></tbody>
+                </table>
               </div>
             </div>
           </div>
 
-          <!-- SUBMÓDULO 3: REPORTES Y GRÁFICOS INTERACTIVOS DE SUPER ADMIN -->
           <div id="submod-superadmin-reportes" style="display: none;">
             <div class="card" style="margin-bottom: 1.5rem;">
               <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
                 <div>
                   <h3><i class="fa-solid fa-chart-column"></i> Reportes & Métricas Ejecutivas</h3>
-                  <p style="color: var(--text-secondary); font-size: 0.85rem;">Analítica de rendimiento general con filtros por fecha y por sucursal.</p>
                 </div>
-                
-                <!-- FILTROS DE SUCURSAL Y FECHAS -->
                 <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                   <div>
-                    <label for="reporteFechaInicio" style="font-size: 0.75rem; color: var(--text-secondary); display: block;">Desde:</label>
-                    <input type="date" id="reporteFechaInicio" class="form-control" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;" onchange="actualizarGraficosSuperAdmin()">
+                    <label style="font-size: 0.75rem; color: var(--text-secondary);">Desde:</label>
+                    <input type="date" id="reporteFechaInicio" class="form-control" onchange="actualizarGraficosSuperAdmin()">
                   </div>
                   <div>
-                    <label for="reporteFechaFin" style="font-size: 0.75rem; color: var(--text-secondary); display: block;">Hasta:</label>
-                    <input type="date" id="reporteFechaFin" class="form-control" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;" onchange="actualizarGraficosSuperAdmin()">
+                    <label style="font-size: 0.75rem; color: var(--text-secondary);">Hasta:</label>
+                    <input type="date" id="reporteFechaFin" class="form-control" onchange="actualizarGraficosSuperAdmin()">
                   </div>
                   <div>
-                    <label for="filtroReporteSucursal" style="font-size: 0.75rem; color: var(--text-secondary); display: block;">Sucursal:</label>
-                    <select id="filtroReporteSucursal" class="form-control" style="padding: 0.35rem 0.6rem; font-size: 0.85rem; width: auto;" onchange="actualizarGraficosSuperAdmin()">
-                      <!-- Se llena dinámicamente -->
-                    </select>
+                    <label style="font-size: 0.75rem; color: var(--text-secondary);">Sucursal:</label>
+                    <select id="filtroReporteSucursal" class="form-control" onchange="actualizarGraficosSuperAdmin()"></select>
                   </div>
-                  <button class="btn btn-secondary btn-sm" onclick="limpiarFiltrosFechasReportes()" style="margin-top: auto;" title="Limpiar Filtros de Fecha">
-                    <i class="fa-solid fa-rotate-left"></i>
-                  </button>
                 </div>
               </div>
             </div>
-
-            <!-- GRÁFICOS EJECUTIVOS -->
             <div class="grid-2-col">
-              <!-- Gráfico 1: Servicios más Solicitados (PASTEL) -->
               <div class="card">
-                <h3 style="margin-bottom: 1rem; font-size: 1.1rem; color: var(--text-primary);"><i class="fa-solid fa-chart-pie"></i> Servicios Más Solicitados</h3>
-                <div style="position: relative; height: 280px; width: 100%; display: flex; justify-content: center; align-items: center;">
-                  <canvas id="chartServiciosPopulares"></canvas>
-                </div>
+                <h3>Servicios Más Solicitados</h3>
+                <div style="position: relative; height: 280px;"><canvas id="chartServiciosPopulares"></canvas></div>
               </div>
-
-              <!-- Gráfico 2: Ventas por Estilista -->
               <div class="card">
-                <h3 style="margin-bottom: 1rem; font-size: 1.1rem; color: var(--text-primary);"><i class="fa-solid fa-chart-bar"></i> Ventas por Estilista ($)</h3>
-                <div style="position: relative; height: 280px; width: 100%;">
-                  <canvas id="chartEstilistasVentas"></canvas>
-                </div>
+                <h3>Ventas por Estilista ($)</h3>
+                <div style="position: relative; height: 280px;"><canvas id="chartEstilistasVentas"></canvas></div>
               </div>
-
-              <!-- Gráfico 3: Rendimiento de Ventas ($) -->
               <div class="card" style="grid-column: 1 / -1;">
-                <h3 style="margin-bottom: 1rem; font-size: 1.1rem; color: var(--text-primary);"><i class="fa-solid fa-chart-line"></i> Rendimiento de Ventas ($)</h3>
-                <div style="position: relative; height: 260px; width: 100%;">
-                  <canvas id="chartIngresosSemanales"></canvas>
-                </div>
+                <h3>Rendimiento de Ventas ($)</h3>
+                <div style="position: relative; height: 260px;"><canvas id="chartIngresosSemanales"></canvas></div>
               </div>
             </div>
           </div>
@@ -424,20 +377,18 @@
     </main>
   </div>
 
-  <!-- MODAL: AVISO DE COMPRA (STOCK BAJO <= 5) -->
+  <!-- MODAL: AVISO DE COMPRA -->
   <div class="modal" id="modalAvisoCompra">
     <div class="modal-content">
       <div class="modal-header" style="border-bottom: 1px solid var(--danger);">
-        <h3 style="color: var(--danger);"><i class="fa-solid fa-cart-shopping"></i> ¡Aviso de Compra de Productos!</h3>
+        <h3 style="color: var(--danger);"><i class="fa-solid fa-cart-shopping"></i> ¡Aviso de Compra!</h3>
         <button class="close-btn" onclick="cerrarModal('modalAvisoCompra')">&times;</button>
       </div>
       <div style="margin: 1rem 0;">
-        <p style="margin-bottom: 0.75rem; font-size: 0.9rem;">Los siguientes productos tienen <strong>5 o menos unidades en inventario</strong> y requieren reabastecimiento urgente:</p>
-        <ul id="listaAvisoCompraProductos" style="list-style: none; padding: 0; max-height: 200px; overflow-y: auto;"></ul>
+        <p>Productos con 5 o menos unidades en inventario:</p>
+        <ul id="listaAvisoCompraProductos" style="list-style: none; padding: 0;"></ul>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" onclick="cerrarModal('modalAvisoCompra')">Entendido</button>
-      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="cerrarModal('modalAvisoCompra')">Entendido</button></div>
     </div>
   </div>
 
@@ -448,7 +399,7 @@
         <h3>Acceso Super Admin</h3>
         <button class="close-btn" onclick="cerrarModal('modalSuperAdminAuth')">&times;</button>
       </div>
-      <form id="formSuperAdminAuth" onsubmit="validarPasswordSuperAdmin(event)">
+      <form onsubmit="validarPasswordSuperAdmin(event)">
         <div class="form-group">
           <label>Ingresa la Contraseña:</label>
           <input type="password" id="superAdminPassInput" class="form-control" placeholder="••••••••" required autofocus>
@@ -468,141 +419,80 @@
         <h3>Crear Nueva Sucursal</h3>
         <button class="close-btn" onclick="cerrarModal('modalSucursal')">&times;</button>
       </div>
-      <form id="formSucursal" onsubmit="guardarSucursal(event)">
-        <div class="form-group">
-          <label>Nombre de la Sucursal</label>
-          <input type="text" id="sucursalNombre" class="form-control" placeholder="Ej: Sucursal Norte, Barbería Centro" required>
-        </div>
-        <div class="form-group">
-          <label>Dirección</label>
-          <input type="text" id="sucursalDireccion" class="form-control" placeholder="Ej: Av. Principal #123" required>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="cerrarModal('modalSucursal')">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Crear Sucursal</button>
-        </div>
+      <form onsubmit="guardarSucursal(event)">
+        <div class="form-group"><label>Nombre</label><input type="text" id="sucursalNombre" class="form-control" required></div>
+        <div class="form-group"><label>Dirección</label><input type="text" id="sucursalDireccion" class="form-control" required></div>
+        <div class="modal-footer"><button type="submit" class="btn btn-primary">Crear</button></div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL: ESTILISTA (CREAR / EDITAR) -->
+  <!-- MODAL: ESTILISTA -->
   <div class="modal" id="modalEstilista">
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="modalEstilistaTitulo">Registrar Estilista</h3>
         <button class="close-btn" onclick="cerrarModal('modalEstilista')">&times;</button>
       </div>
-      <form id="formEstilista" onsubmit="guardarEstilista(event)">
+      <form onsubmit="guardarEstilista(event)">
         <input type="hidden" id="estilistaId">
-        <div class="form-group">
-          <label>Nombre Completo</label>
-          <input type="text" id="estilistaNombre" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Cédula</label>
-          <input type="text" id="estilistaCedula" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Fecha de Nacimiento</label>
-          <input type="date" id="estilistaNacimiento" class="form-control" required>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="cerrarModal('modalEstilista')">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Guardar Cambios</button>
-        </div>
+        <div class="form-group"><label>Nombre Completo</label><input type="text" id="estilistaNombre" class="form-control" required></div>
+        <div class="form-group"><label>Cédula</label><input type="text" id="estilistaCedula" class="form-control" required></div>
+        <div class="form-group"><label>Fecha de Nacimiento</label><input type="date" id="estilistaNacimiento" class="form-control" required></div>
+        <div class="modal-footer"><button type="submit" class="btn btn-primary">Guardar</button></div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL: PRODUCTO (CREAR / EDITAR) -->
+  <!-- MODAL: PRODUCTO -->
   <div class="modal" id="modalProducto">
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="modalProductoTitulo">Agregar Producto</h3>
         <button class="close-btn" onclick="cerrarModal('modalProducto')">&times;</button>
       </div>
-      <form id="formProducto" onsubmit="guardarProducto(event)">
+      <form onsubmit="guardarProducto(event)">
         <input type="hidden" id="prodId">
-        <div class="form-group">
-          <label>Nombre del Producto</label>
-          <input type="text" id="prodNombre" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Categoría</label>
-          <input type="text" id="prodCategoria" class="form-control" placeholder="Capilar, Barba, etc." required>
-        </div>
-        <div class="grid-2-col">
-          <div class="form-group">
-            <label>Precio ($)</label>
-            <input type="number" step="0.01" id="prodPrecio" class="form-control" required>
-          </div>
-          <div class="form-group">
-            <label>Stock Actual</label>
-            <input type="number" id="prodStock" class="form-control" required>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="cerrarModal('modalProducto')">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Guardar Cambios</button>
-        </div>
+        <div class="form-group"><label>Nombre</label><input type="text" id="prodNombre" class="form-control" required></div>
+        <div class="form-group"><label>Categoría</label><input type="text" id="prodCategoria" class="form-control" required></div>
+        <div class="form-group"><label>Precio ($)</label><input type="number" step="0.01" id="prodPrecio" class="form-control" required></div>
+        <div class="form-group"><label>Stock</label><input type="number" id="prodStock" class="form-control" required></div>
+        <div class="modal-footer"><button type="submit" class="btn btn-primary">Guardar</button></div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL: SERVICIO (CREAR / EDITAR) -->
+  <!-- MODAL: SERVICIO -->
   <div class="modal" id="modalServicio">
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="modalServicioTitulo">Agregar Servicio</h3>
         <button class="close-btn" onclick="cerrarModal('modalServicio')">&times;</button>
       </div>
-      <form id="formServicio" onsubmit="guardarServicio(event)">
+      <form onsubmit="guardarServicio(event)">
         <input type="hidden" id="servId">
-        <div class="form-group">
-          <label>Nombre del Servicio</label>
-          <input type="text" id="servNombre" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Precio ($)</label>
-          <input type="number" step="0.01" id="servPrecio" class="form-control" required>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="cerrarModal('modalServicio')">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Guardar Cambios</button>
-        </div>
+        <div class="form-group"><label>Nombre</label><input type="text" id="servNombre" class="form-control" required></div>
+        <div class="form-group"><label>Precio ($)</label><input type="number" step="0.01" id="servPrecio" class="form-control" required></div>
+        <div class="modal-footer"><button type="submit" class="btn btn-primary">Guardar</button></div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL: CLIENTE (CREAR / EDITAR) - SIN EMAIL -->
+  <!-- MODAL: CLIENTE -->
   <div class="modal" id="modalCliente">
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="modalClienteTitulo">Registrar Cliente</h3>
         <button class="close-btn" onclick="cerrarModal('modalCliente')">&times;</button>
       </div>
-      <form id="formCliente" onsubmit="guardarCliente(event)">
+      <form onsubmit="guardarCliente(event)">
         <input type="hidden" id="cliId">
-        <div class="form-group">
-          <label>Nombre Apellido</label>
-          <input type="text" id="cliNombre" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Teléfono</label>
-          <input type="text" id="cliTelefono" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Fecha de Nacimiento</label>
-          <input type="date" id="cliNacimiento" class="form-control">
-        </div>
-        <div class="form-group">
-          <label>Notas / Preferencias</label>
-          <textarea id="cliNotas" class="form-control" rows="3"></textarea>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="cerrarModal('modalCliente')">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Guardar</button>
-        </div>
+        <div class="form-group"><label>Nombre</label><input type="text" id="cliNombre" class="form-control" required></div>
+        <div class="form-group"><label>Teléfono</label><input type="text" id="cliTelefono" class="form-control" required></div>
+        <div class="form-group"><label>Servicios Acumulados (0 - 8)</label><input type="number" min="0" max="8" id="cliServiciosAcumulados" class="form-control" value="0"></div>
+        <div class="form-group"><label>F. Nacimiento</label><input type="date" id="cliNacimiento" class="form-control"></div>
+        <div class="form-group"><label>Notas</label><textarea id="cliNotas" class="form-control" rows="3"></textarea></div>
+        <div class="modal-footer"><button type="submit" class="btn btn-primary">Guardar</button></div>
       </form>
     </div>
   </div>
@@ -610,30 +500,23 @@
   <!-- MODAL: TICKET -->
   <div class="modal" id="modalTicket">
     <div class="modal-content modal-sm text-center">
-      <div class="ticket-header">
-        <h2>Leguend Barber Studio</h2>
-        <p id="ticketSucursal">Sucursal</p>
-        <p id="ticketFechaHora"></p>
-      </div>
-      <hr class="divider">
-      <div class="text-left font-sm">
-        <p><strong>Cliente:</strong> <span id="ticketCliente"></span></p>
-        <p><strong>Estilista:</strong> <span id="ticketEstilista"></span></p>
-        <p><strong>Pago:</strong> <span id="ticketMetodo"></span></p>
-      </div>
-      <hr class="divider">
-      <div id="ticketDetalles" class="text-left font-sm"></div>
-      <hr class="divider">
-      <div class="text-right font-md">
-        <p><strong>Total: $<span id="ticketTotal"></span></strong></p>
-        <p id="ticketEfectivoContainer" style="display:none; font-size: 0.85rem; margin-top: 4px;">
-          Efectivo: $<span id="ticketEfectivo"></span> | Vuelto: $<span id="ticketVuelto"></span>
-        </p>
-      </div>
-      <div class="modal-footer margin-top">
-        <button class="btn btn-primary btn-block" onclick="window.print()">
-          <i class="fa-solid fa-print"></i> Imprimir
+      <h2>Leguend Barber Studio</h2>
+      <p id="ticketSucursal">Sucursal</p>
+      <p id="ticketFechaHora"></p>
+      <hr>
+      <p><strong>Cliente:</strong> <span id="ticketCliente"></span></p>
+      <p><strong>Estilista:</strong> <span id="ticketEstilista"></span></p>
+      <p><strong>Pago:</strong> <span id="ticketMetodo"></span></p>
+      <hr>
+      <p><strong>Total: $<span id="ticketTotal"></span></strong></p>
+      <div class="modal-footer margin-top" style="flex-direction: column;">
+        <button id="btnTicketWhatsapp" class="btn btn-success btn-block" style="background-color: #25d366;">
+          <i class="fa-brands fa-whatsapp"></i> Enviar Comprobante por WhatsApp
         </button>
+        <button id="btnTicketPremioWhatsapp" class="btn btn-loyalty-green btn-block" style="display: none; justify-content: center;">
+          <i class="fa-solid fa-gift"></i> ¡Ganó Corte Gratis! Avisar WhatsApp
+        </button>
+        <button class="btn btn-primary btn-block" onclick="window.print()"><i class="fa-solid fa-print"></i> Imprimir</button>
         <button class="btn btn-secondary btn-block" onclick="cerrarModal('modalTicket')">Cerrar</button>
       </div>
     </div>

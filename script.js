@@ -1,67 +1,119 @@
-// Estado y Persistencia Multi-Sucursal
-const DEFAULT_DATA = {
+// ==========================================
+// CONFIGURACIÓN DE SUPABASE
+// ==========================================
+const SUPABASE_URL = 'https://rsfkxwopwtcyjpkstpmp.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_hJFsLmxBducinC6pH-hDQw_Uxyj24eZ';
+
+let supabaseClient = null;
+
+let appData = {
   sucursalActiva: 'suc_1',
-  sucursales: [
-    { id: 'suc_1', nombre: 'Sucursal Central', direccion: 'Av. Principal #101' },
-    { id: 'suc_2', nombre: 'Sucursal Norte', direccion: 'Calle Comercial #45' },
-    { id: 'suc_3', nombre: 'Sucursal Sur', direccion: 'Av. Las Palmas #88' }
-  ],
-  estilistas: [
-    { id: 'e1', sucursalId: 'suc_1', nombre: 'Carlos Mendoza', cedula: '1712345678', nacimiento: '1988-03-12' },
-    { id: 'e2', sucursalId: 'suc_2', nombre: 'Ana Gómez', cedula: '1723456789', nacimiento: '1992-07-25' },
-    { id: 'e3', sucursalId: 'suc_3', nombre: 'Luis Torres', cedula: '1734567890', nacimiento: '1990-11-05' }
-  ],
-  servicios: [
-    { id: 's1', nombre: 'Corte Caballero', precio: 12.00, tipo: 'servicio', fechaCreacion: '2026-01-05', usosCount: 42 },
-    { id: 's2', nombre: 'Tinte & Peinado', precio: 35.00, tipo: 'servicio', fechaCreacion: '2026-01-08', usosCount: 18 },
-    { id: 's3', nombre: 'Perfilado Barba', precio: 8.00, tipo: 'servicio', fechaCreacion: '2026-01-15', usosCount: 30 }
-  ],
-  productos: [
-    { id: 'p1', sucursalId: 'suc_1', nombre: 'Cera Moldeadora', categoria: 'Capilar', precio: 15.00, stock: 8, tipo: 'producto', fechaCreacion: '2026-01-10' },
-    { id: 'p2', sucursalId: 'suc_2', nombre: 'Aceite para Barba', categoria: 'Barba', precio: 18.00, stock: 2, tipo: 'producto', fechaCreacion: '2026-01-12' },
-    { id: 'p3', sucursalId: 'suc_1', nombre: 'Shampoo Especial', categoria: 'Capilar', precio: 22.00, stock: 4, tipo: 'producto', fechaCreacion: '2026-02-01' }
-  ],
-  clientes: [
-   { id: 'c_imp_1', nombre: 'Erick Morocho', telefono: '0963026507', nacimiento: '2017-10-23', fechaCreacion: '2026-10-05', notas: '' },
-   { id: 'c_imp_2', nombre: 'Edwin Caguana', telefono: '0997046998', nacimiento: '2007-05-10', fechaCreacion: '2026-10-04', notas: '' }
-  ],
+  sucursales: [],
+  estilistas: [],
+  servicios: [],
+  productos: [],
+  clientes: [],
   ventas: []
 };
 
-// Autenticación de Super Admin
-const PASSWORD_SUPER_ADMIN = "admin123";
 let esSuperAdmin = false;
+const META_SERVICIOS_GRATIS = 8; // Meta de 8 servicios para corte gratis
 
-function cargarDatos() {
-  const local = localStorage.getItem('styleStudioMultiBranch');
-  const data = local ? JSON.parse(local) : DEFAULT_DATA;
-  
-  if (data.productos) {
-    data.productos.forEach(p => {
-      if (!p.fechaCreacion) p.fechaCreacion = new Date().toISOString().split('T')[0];
-    });
-  }
-  if (data.servicios) {
-    data.servicios.forEach(s => {
-      if (!s.fechaCreacion) s.fechaCreacion = new Date().toISOString().split('T')[0];
-      if (s.usosCount === undefined) s.usosCount = 0;
-    });
-  }
+async function cargarDatosDesdeSupabase() {
+  try {
+    if (typeof supabase !== 'undefined') {
+      supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } else {
+      console.error("El SDK de Supabase no está cargado.");
+      return;
+    }
 
-  return data;
+    const [resSuc, resEst, resServ, resProd, resCli, resVentas] = await Promise.all([
+      supabaseClient.from('sucursales').select('*'),
+      supabaseClient.from('estilistas').select('*'),
+      supabaseClient.from('servicios').select('*'),
+      supabaseClient.from('productos').select('*'),
+      supabaseClient.from('clientes').select('*'),
+      supabaseClient.from('ventas').select('*')
+    ]);
+
+    if (resSuc.error) throw resSuc.error;
+
+    if (!resSuc.data || resSuc.data.length === 0) {
+      await inicializarDatosDefault();
+      return cargarDatosDesdeSupabase();
+    }
+
+    appData.sucursales = resSuc.data;
+    appData.sucursalActiva = appData.sucursalActiva || appData.sucursales[0]?.id;
+    appData.estilistas = (resEst.data || []).map(e => ({ ...e, sucursalId: e.sucursal_id }));
+    appData.servicios = (resServ.data || []).map(s => ({ ...s, fechaCreacion: s.fecha_creacion, usosCount: s.usos_count }));
+    appData.productos = (resProd.data || []).map(p => ({ ...p, sucursalId: p.sucursal_id, fechaCreacion: p.fecha_creacion }));
+    
+    appData.clientes = (resCli.data || []).map(c => {
+      const localCount = parseInt(localStorage.getItem(`fidelidad_${c.id}`) || '0', 10);
+      const dbCount = c.servicios_acumulados !== undefined && c.servicios_acumulados !== null ? c.servicios_acumulados : localCount;
+      return { 
+        ...c, 
+        fechaCreacion: c.fecha_creacion,
+        serviciosAcumulados: dbCount
+      };
+    });
+
+    appData.ventas = (resVentas.data || []).map(v => ({ 
+      ...v, 
+      sucursalId: v.sucursal_id, 
+      clienteId: v.cliente_id, 
+      estilistaId: v.estilista_id, 
+      metodoPago: v.metodo_pago, 
+      efectivoRecibido: v.efectivo_recibido 
+    }));
+
+  } catch (error) {
+    console.error('Error al conectar con Supabase:', error.message);
+  }
 }
 
-function guardarDatos() {
-  localStorage.setItem('styleStudioMultiBranch', JSON.stringify(appData));
+async function inicializarDatosDefault() {
+  const defaultSucursales = [
+    { id: 'suc_1', nombre: 'Sucursal Central', direccion: 'Av. Principal #101' },
+    { id: 'suc_2', nombre: 'Sucursal Norte', direccion: 'Calle Comercial #45' },
+    { id: 'suc_3', nombre: 'Sucursal Sur', direccion: 'Av. Las Palmas #88' }
+  ];
+  const defaultEstilistas = [
+    { id: 'e1', sucursal_id: 'suc_1', nombre: 'Carlos Mendoza', cedula: '1712345678', nacimiento: '1988-03-12' },
+    { id: 'e2', sucursal_id: 'suc_2', nombre: 'Ana Gómez', cedula: '1723456789', nacimiento: '1992-07-25' },
+    { id: 'e3', sucursal_id: 'suc_3', nombre: 'Luis Torres', cedula: '1734567890', nacimiento: '1990-11-05' }
+  ];
+  const defaultServicios = [
+    { id: 's1', nombre: 'Corte Caballero', precio: 12.00, tipo: 'servicio', fecha_creacion: '2026-01-05', usos_count: 42 },
+    { id: 's2', nombre: 'Tinte & Peinado', precio: 35.00, tipo: 'servicio', fecha_creacion: '2026-01-08', usos_count: 18 },
+    { id: 's3', nombre: 'Perfilado Barba', precio: 8.00, tipo: 'servicio', fecha_creacion: '2026-01-15', usos_count: 30 }
+  ];
+  const defaultProductos = [
+    { id: 'p1', sucursal_id: 'suc_1', nombre: 'Cera Moldeadora', categoria: 'Capilar', precio: 15.00, stock: 8, tipo: 'producto', fecha_creacion: '2026-01-10' },
+    { id: 'p2', sucursal_id: 'suc_2', nombre: 'Aceite para Barba', categoria: 'Barba', precio: 18.00, stock: 2, tipo: 'producto', fecha_creacion: '2026-01-12' },
+    { id: 'p3', sucursal_id: 'suc_1', nombre: 'Shampoo Especial', categoria: 'Capilar', precio: 22.00, stock: 4, tipo: 'producto', fecha_creacion: '2026-02-01' }
+  ];
+  const defaultClientes = [
+   { id: 'c_imp_1', nombre: 'Erick Morocho', telefono: '0963026507', nacimiento: '2017-10-23', fecha_creacion: '2026-10-05', notas: '' },
+   { id: 'c_imp_2', nombre: 'Edwin Caguana', telefono: '0997046998', nacimiento: '2007-05-10', fecha_creacion: '2026-10-04', notas: '' }
+  ];
+
+  await supabaseClient.from('sucursales').insert(defaultSucursales);
+  await supabaseClient.from('estilistas').insert(defaultEstilistas);
+  await supabaseClient.from('servicios').insert(defaultServicios);
+  await supabaseClient.from('productos').insert(defaultProductos);
+  await supabaseClient.from('clientes').insert(defaultClientes);
 }
 
-let appData = cargarDatos();
 let carritoPOS = [];
 let moduloActual = 'pos';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   setupNavegacion();
   setupTema();
+  await cargarDatosDesdeSupabase();
   renderizarSucursales();
   actualizarVisibilidadBotonesAdmin();
   renderizarModulo('pos');
@@ -72,13 +124,11 @@ function setupNavegacion() {
   navBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const targetTab = btn.dataset.tab;
-
       if (targetTab === 'superadmin' && !esSuperAdmin) {
         document.getElementById('superAdminPassInput').value = '';
         abrirModal('modalSuperAdminAuth');
         return;
       }
-
       activarPestana(btn, targetTab);
     });
   });
@@ -88,49 +138,71 @@ function setupNavegacion() {
   });
 }
 
+function abrirMenuMovil() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarOverlay').classList.add('active');
+}
+
+function cerrarMenuMovil() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('active');
+}
+
 function activarPestana(btn, targetTab) {
-  const navBtns = document.querySelectorAll('.nav-btn');
-  navBtns.forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   moduloActual = targetTab;
   renderizarModulo(moduloActual);
-  document.getElementById('sidebar').classList.remove('open');
+  cerrarMenuMovil();
 }
 
-function validarPasswordSuperAdmin(e) {
+async function validarPasswordSuperAdmin(e) {
   e.preventDefault();
-  const inputPass = document.getElementById('superAdminPassInput').value;
+  const inputPass = document.getElementById('superAdminPassInput').value.trim();
 
-  if (inputPass === PASSWORD_SUPER_ADMIN) {
+  if (!supabaseClient) {
+    alert('Error: Supabase no inicializado.');
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('usuarios')
+      .select('*')
+      .eq('password', inputPass)
+      .maybeSingle();
+
+    if (error || !data) {
+      alert('Contraseña incorrecta. Inténtalo de nuevo.');
+      return;
+    }
+
     esSuperAdmin = true;
     cerrarModal('modalSuperAdminAuth');
     actualizarVisibilidadBotonesAdmin();
     
     const superAdminBtn = document.querySelector('.nav-btn[data-tab="superadmin"]');
     activarPestana(superAdminBtn, 'superadmin');
-  } else {
-    alert('Contraseña incorrecta. Inténtalo de nuevo.');
+
+  } catch (err) {
+    console.error('Error al validar Super Admin:', err.message);
+    alert('Ocurrió un error al verificar las credenciales.');
   }
 }
 
 function cerrarSesionSuperAdmin() {
-  if (confirm('¿Deseas cerrar la sesión de Super Admin? Se ocultarán las funciones avanzadas.')) {
+  if (confirm('¿Deseas cerrar la sesión de Super Admin?')) {
     esSuperAdmin = false;
     actualizarVisibilidadBotonesAdmin();
     const posBtn = document.querySelector('.nav-btn[data-tab="pos"]');
     activarPestana(posBtn, 'pos');
-    alert('Sesión de Super Admin cerrada correctamente.');
   }
 }
 
 function actualizarVisibilidadBotonesAdmin() {
-  const adminElements = document.querySelectorAll('.admin-only');
-  adminElements.forEach(el => {
-    if (esSuperAdmin) {
-      el.classList.add('unlocked');
-    } else {
-      el.classList.remove('unlocked');
-    }
+  document.querySelectorAll('.admin-only').forEach(el => {
+    if (esSuperAdmin) el.classList.add('unlocked');
+    else el.classList.remove('unlocked');
   });
 
   const badge = document.getElementById('badgeAdminActive');
@@ -140,74 +212,53 @@ function actualizarVisibilidadBotonesAdmin() {
   if (esSuperAdmin) {
     if (badge) badge.style.display = 'inline-flex';
     if (btnCerrarHeader) btnCerrarHeader.style.display = 'inline-flex';
-    if (icon) {
-      icon.className = 'fa-solid fa-lock-open';
-      icon.style.color = 'var(--emerald)';
-    }
+    if (icon) { icon.className = 'fa-solid fa-lock-open'; icon.style.color = 'var(--emerald)'; }
   } else {
     if (badge) badge.style.display = 'none';
     if (btnCerrarHeader) btnCerrarHeader.style.display = 'none';
-    if (icon) {
-      icon.className = 'fa-solid fa-lock';
-      icon.style.color = '';
-    }
+    if (icon) { icon.className = 'fa-solid fa-lock'; icon.style.color = ''; }
   }
 }
 
-// Gestión de Sucursales
 function renderizarSucursales() {
   const select = document.getElementById('sucursalSelect');
-  select.innerHTML = appData.sucursales.map(s => `
-    <option value="${s.id}" ${s.id === appData.sucursalActiva ? 'selected' : ''}>${s.nombre}</option>
-  `).join('');
+  if (select) {
+    select.innerHTML = appData.sucursales.map(s => `
+      <option value="${s.id}" ${s.id === appData.sucursalActiva ? 'selected' : ''}>${s.nombre}</option>
+    `).join('');
+  }
 }
 
 function cambiarSucursal(id) {
   appData.sucursalActiva = id;
-  guardarDatos();
   renderizarModulo(moduloActual);
 }
 
-function guardarSucursal(e) {
+async function guardarSucursal(e) {
   e.preventDefault();
   if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-
   const nueva = {
     id: 'suc_' + Date.now(),
     nombre: document.getElementById('sucursalNombre').value,
     direccion: document.getElementById('sucursalDireccion').value
   };
-
+  await supabaseClient.from('sucursales').insert([nueva]);
   appData.sucursales.push(nueva);
   appData.sucursalActiva = nueva.id;
-  guardarDatos();
   cerrarModal('modalSucursal');
   renderizarSucursales();
   renderizarModulo(moduloActual);
 }
 
-function eliminarSucursalActiva() {
+async function eliminarSucursalActiva() {
   if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
+  if (appData.sucursales.length <= 1) return alert('No puedes eliminar la última sucursal.');
 
-  if (appData.sucursales.length <= 1) {
-    alert('No puedes eliminar la última sucursal existente.');
-    return;
-  }
-
-  const sucursalActual = appData.sucursales.find(s => s.id === appData.sucursalActiva);
-  const nombreSucursal = sucursalActual ? sucursalActual.nombre : 'esta sucursal';
-
-  if (confirm(`¿Estás seguro de que deseas eliminar la sucursal "${nombreSucursal}"? Se eliminarán también sus estilistas, productos y registros asociados a esta ubicación.`)) {
+  if (confirm('¿Estás seguro de eliminar esta sucursal?')) {
     const idEliminar = appData.sucursalActiva;
-
+    await supabaseClient.from('sucursales').delete().eq('id', idEliminar);
     appData.sucursales = appData.sucursales.filter(s => s.id !== idEliminar);
-    appData.estilistas = appData.estilistas.filter(e => e.sucursalId !== idEliminar);
-    appData.productos = appData.productos.filter(p => p.sucursalId !== idEliminar);
-    appData.ventas = appData.ventas.filter(v => v.sucursalId !== idEliminar);
-
     appData.sucursalActiva = appData.sucursales[0].id;
-
-    guardarDatos();
     renderizarSucursales();
     renderizarModulo(moduloActual);
   }
@@ -218,207 +269,179 @@ function renderizarModulo(modulo) {
   const activeMod = document.getElementById(`mod-${modulo}`);
   if (activeMod) activeMod.classList.add('active');
 
-  const sucursal = appData.sucursales.find(s => s.id === appData.sucursalActiva);
-  const nombreSuc = sucursal ? sucursal.nombre : 'General';
-
-  const titulos = {
-    pos: [`Punto de Venta - ${nombreSuc}`, 'Facturación y cobranza'],
-    estilistas: [`Estilistas - ${nombreSuc}`, 'Personal asignado a esta sucursal'],
-    inventario: [`Inventario & Servicios - ${nombreSuc}`, 'Gestión de stock de productos y catálogo de servicios'],
-    clientes: ['Clientes Globales', 'Directorio de clientes de la cadena'],
-    superadmin: ['Panel Super Admin', 'Control global, gestión de sucursales y reportes avanzados']
-  };
-
-  if (titulos[modulo]) {
-    document.getElementById('pageTitle').innerText = titulos[modulo][0];
-    document.getElementById('pageSubTitle').innerText = titulos[modulo][1];
-  }
-
   poblarSelects();
-
   if (modulo === 'pos') renderizarPOS();
   if (modulo === 'estilistas') renderizarEstilistas();
   if (modulo === 'inventario') {
     renderizarInventario();
-    comprobarAvisoCompraInventario();
+    renderizarServiciosInventario();
   }
   if (modulo === 'clientes') renderizarClientes();
-  if (modulo === 'superadmin') {
-    renderizarSuperAdmin();
-    renderizarDashboard();
+  if (modulo === 'superadmin') { 
+    poblarFiltroReportesSucursal();
+    renderizarSuperAdmin(); 
+    renderizarDashboard(); 
+    actualizarGraficosSuperAdmin();
   }
 }
 
-// DASHBOARD INTEGRADO
 function renderizarDashboard() {
   const hoy = new Date().toISOString().split('T')[0];
-  const ventasSucursal = appData.ventas.filter(v => v.sucursalId === appData.sucursalActiva);
-  const ingresosHoy = ventasSucursal
-    .filter(v => v.fecha === hoy)
-    .reduce((sum, v) => sum + v.total, 0);
-  const estilistasCount = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva).length;
-  const stockBajo = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva && p.stock <= 5).length;
-
-  const elIngresos = document.getElementById('dashIngresos');
-  const elEstilistas = document.getElementById('dashEstilistas');
-  const elStockBajo = document.getElementById('dashStockBajo');
-
-  if (elIngresos) elIngresos.innerText = `$${ingresosHoy.toFixed(2)}`;
-  if (elEstilistas) elEstilistas.innerText = estilistasCount;
-  if (elStockBajo) elStockBajo.innerText = stockBajo;
+  const ventasSuc = appData.ventas.filter(v => v.sucursalId === appData.sucursalActiva);
+  const ingresosHoy = ventasSuc.filter(v => v.fecha === hoy).reduce((sum, v) => sum + v.total, 0);
+  
+  document.getElementById('dashIngresos').innerText = `$${ingresosHoy.toFixed(2)}`;
+  document.getElementById('dashEstilistas').innerText = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva).length;
+  document.getElementById('dashStockBajo').innerText = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva && p.stock <= 5).length;
 
   const tbodyVentas = document.getElementById('dashTablaVentas');
   if (tbodyVentas) {
-    tbodyVentas.innerHTML = ventasSucursal.length === 0
-      ? `<tr><td colspan="6" class="text-center">Sin facturas recientes registradas</td></tr>`
-      : ventasSucursal.slice(-15).reverse().map(v => {
-          const cliente = appData.clientes.find(c => c.id === v.clienteId)?.nombre || 'Cliente Ocasional';
-          const estilista = appData.estilistas.find(e => e.id === v.estilistaId)?.nombre || 'Sin Asignar';
-          return `
-            <tr>
-              <td>${v.fecha}</td>
-              <td><strong>${cliente}</strong></td>
-              <td>${estilista}</td>
-              <td><span class="badge-status badge-Confirmada">${v.metodoPago}</span></td>
-              <td><strong>$${v.total.toFixed(2)}</strong></td>
-              <td>
-                <button class="btn btn-primary btn-sm" onclick="reimprimirTicket('${v.id}')" title="Reimprimir Factura">
-                  <i class="fa-solid fa-print"></i> Imprimir
-                </button>
-              </td>
-            </tr>
-          `;
-        }).join('');
+    tbodyVentas.innerHTML = ventasSuc.length === 0 ? `<tr><td colspan="6" class="text-center">Sin facturas recientes</td></tr>` :
+      ventasSuc.slice(-15).reverse().map(v => `
+        <tr>
+          <td>${v.fecha}</td>
+          <td>${appData.clientes.find(c => c.id === v.clienteId)?.nombre || 'Ocasional'}</td>
+          <td>${appData.estilistas.find(e => e.id === v.estilistaId)?.nombre || 'Sin Asignar'}</td>
+          <td>${v.metodoPago}</td>
+          <td><strong>$${v.total.toFixed(2)}</strong></td>
+          <td><button class="btn btn-primary btn-sm" onclick="reimprimirTicket('${v.id}')"><i class="fa-solid fa-print"></i></button></td>
+        </tr>
+      `).join('');
   }
 }
 
-// SUPER ADMIN
 function cambiarSubmodSuperAdmin(tab, btn) {
   document.querySelectorAll('#mod-superadmin .tab-link').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  document.getElementById('submod-superadmin-global').style.display = tab === 'global' ? 'block' : 'none';
+  document.getElementById('submod-superadmin-dashboard').style.display = tab === 'dashboard' ? 'block' : 'none';
+  document.getElementById('submod-superadmin-reportes').style.display = tab === 'reportes' ? 'block' : 'none';
+  if (tab === 'dashboard') renderizarDashboard();
+  if (tab === 'reportes') actualizarGraficosSuperAdmin();
+}
 
-  const divGlobal = document.getElementById('submod-superadmin-global');
-  const divDash = document.getElementById('submod-superadmin-dashboard');
-  const divRep = document.getElementById('submod-superadmin-reportes');
+// ==========================================
+// CONTROL GLOBAL Y RECOLECCIÓN POR SUCURSAL
+// ==========================================
 
-  if (divGlobal) divGlobal.style.display = 'none';
-  if (divDash) divDash.style.display = 'none';
-  if (divRep) divRep.style.display = 'none';
-
-  if (tab === 'global') {
-    if (divGlobal) divGlobal.style.display = 'block';
-  } else if (tab === 'dashboard') {
-    if (divDash) divDash.style.display = 'block';
-    renderizarDashboard();
-  } else if (tab === 'reportes') {
-    if (divRep) divRep.style.display = 'block';
-    actualizarGraficosSuperAdmin();
-  }
+function poblarFiltroReportesSucursal() {
+  const select = document.getElementById('filtroReporteSucursal');
+  if (!select) return;
+  select.innerHTML = `<option value="todas">🌐 Todas las Sucursales</option>` +
+    appData.sucursales.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
 }
 
 function renderizarSuperAdmin() {
   const container = document.getElementById('superAdminContainer');
   if (!container) return;
 
-  // Cálculo de las ganancias totales globales de todas las sucursales
-  let gananciasGlobalesTotales = 0;
-  appData.sucursales.forEach(sucursal => {
-    const ventasSuc = appData.ventas.filter(v => v.sucursalId === sucursal.id);
-    const totalGanancias = ventasSuc.reduce((sum, v) => sum + v.total, 0);
-    gananciasGlobalesTotales += totalGanancias;
-  });
+  // Ganancias totales de toda la cadena
+  let totalCadena = appData.ventas.reduce((sum, v) => sum + v.total, 0);
+  document.getElementById('gananciasTotalesCadena').innerText = `$${totalCadena.toFixed(2)}`;
 
-  const elGananciasGlobales = document.getElementById('gananciasTotalesCadena');
-  if (elGananciasGlobales) {
-    elGananciasGlobales.innerText = `$${gananciasGlobalesTotales.toFixed(2)}`;
-  }
-
-  container.innerHTML = appData.sucursales.map(sucursal => {
-    const ventasSuc = appData.ventas.filter(v => v.sucursalId === sucursal.id);
-    const totalGanancias = ventasSuc.reduce((sum, v) => sum + v.total, 0);
-    const estilistasSuc = appData.estilistas.filter(e => e.sucursalId === sucursal.id);
-    const productosSuc = appData.productos.filter(p => p.sucursalId === sucursal.id);
+  // Desglose detallado por cada sucursal
+  container.innerHTML = appData.sucursales.map(s => {
+    const ventasSuc = appData.ventas.filter(v => v.sucursalId === s.id);
+    const totalSucursal = ventasSuc.reduce((sum, v) => sum + v.total, 0);
+    const numEstilistas = appData.estilistas.filter(e => e.sucursalId === s.id).length;
+    const productosSuc = appData.productos.filter(p => p.sucursalId === s.id);
+    const stockBajoSuc = productosSuc.filter(p => p.stock <= 5).length;
+    const totalStock = productosSuc.reduce((sum, p) => sum + p.stock, 0);
 
     return `
-      <div class="card" style="margin-bottom: 2rem; border-left: 4px solid var(--accent);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+      <div class="card" style="border-left: 4px solid var(--accent); margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
           <div>
-            <h2 style="font-size: 1.2rem; color: var(--text-primary);"><i class="fa-solid fa-store"></i> ${sucursal.nombre}</h2>
-            <small style="color: var(--text-secondary);">${sucursal.direccion}</small>
+            <h3><i class="fa-solid fa-store" style="color: var(--accent);"></i> ${s.nombre}</h3>
+            <p style="font-size: 0.85rem; color: var(--text-secondary);"><i class="fa-solid fa-location-dot"></i> ${s.direccion || 'Sin dirección'}</p>
           </div>
-          <div style="text-align: right;">
-            <span style="font-size: 0.8rem; color: var(--text-secondary);">Ganancias Sucursal:</span>
-            <h3 style="color: var(--emerald); font-size: 1.3rem;">$${totalGanancias.toFixed(2)}</h3>
-          </div>
-        </div>
-
-        <div class="grid-2-col" style="gap: 1rem;">
-          <div style="background: var(--bg-primary); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
-            <h4 style="margin-bottom: 0.5rem; font-size: 0.95rem; color: var(--accent);"><i class="fa-solid fa-user-ninja"></i> Peluqueros / Estilistas (${estilistasSuc.length})</h4>
-            ${estilistasSuc.length === 0 ? '<p style="font-size: 0.85rem; color: var(--text-secondary);">No hay estilistas registrados.</p>' : `
-              <ul style="list-style: none; padding: 0;">
-                ${estilistasSuc.map(e => `<li style="padding: 4px 0; border-bottom: 1px solid var(--border-color); font-size: 0.85rem; display: flex; justify-content: space-between;"><span>${e.nombre}</span> <small>Cédula: ${e.cedula || 'N/A'}</small></li>`).join('')}
-              </ul>
-            `}
-          </div>
-
-          <div style="background: var(--bg-primary); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
-            <h4 style="margin-bottom: 0.5rem; font-size: 0.95rem; color: var(--amber);"><i class="fa-solid fa-boxes-stacked"></i> Inventario / Stock (${productosSuc.length})</h4>
-            ${productosSuc.length === 0 ? '<p style="font-size: 0.85rem; color: var(--text-secondary);">No hay productos registrados.</p>' : `
-              <ul style="list-style: none; padding: 0; max-height: 120px; overflow-y: auto;">
-                ${productosSuc.map(p => `<li style="padding: 4px 0; border-bottom: 1px solid var(--border-color); font-size: 0.85rem; display: flex; justify-content: space-between;"><span>${p.nombre}</span> <strong>Stock: ${p.stock} ($${p.precio})</strong></li>`).join('')}
-              </ul>
-            `}
+          <div>
+            <button class="btn btn-primary btn-sm" onclick="cambiarSucursalYVerPOS('${s.id}')">
+              <i class="fa-solid fa-eye"></i> Gestionar Sucursal
+            </button>
           </div>
         </div>
 
-        <div style="background: var(--bg-primary); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); margin-top: 1rem;">
-          <h4 style="margin-bottom: 0.5rem; font-size: 0.95rem; color: var(--blue);"><i class="fa-solid fa-scissors"></i> Servicios Disponibles</h4>
-          <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.5rem;">
-            ${appData.servicios.map(s => `<span style="background: var(--bg-card); padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; border: 1px solid var(--border-color);">${s.nombre} - <strong>$${s.precio.toFixed(2)}</strong></span>`).join('')}
+        <div class="kpi-grid" style="margin-bottom: 1rem;">
+          <div class="kpi-card" style="padding: 0.75rem;">
+            <div class="kpi-icon bg-emerald" style="width: 38px; height: 38px; font-size: 1rem;"><i class="fa-solid fa-dollar-sign"></i></div>
+            <div class="kpi-info">
+              <span>Ventas Totales</span>
+              <h3 style="font-size: 1.1rem;">$${totalSucursal.toFixed(2)}</h3>
+            </div>
+          </div>
+          <div class="kpi-card" style="padding: 0.75rem;">
+            <div class="kpi-icon bg-purple" style="width: 38px; height: 38px; font-size: 1rem;"><i class="fa-solid fa-user-ninja"></i></div>
+            <div class="kpi-info">
+              <span>Estilistas</span>
+              <h3 style="font-size: 1.1rem;">${numEstilistas}</h3>
+            </div>
+          </div>
+          <div class="kpi-card" style="padding: 0.75rem;">
+            <div class="kpi-icon bg-blue" style="width: 38px; height: 38px; font-size: 1rem;"><i class="fa-solid fa-boxes-stacked"></i></div>
+            <div class="kpi-info">
+              <span>Unidades en Stock</span>
+              <h3 style="font-size: 1.1rem;">${totalStock} u.</h3>
+            </div>
+          </div>
+          <div class="kpi-card" style="padding: 0.75rem;">
+            <div class="kpi-icon bg-amber" style="width: 38px; height: 38px; font-size: 1rem;"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <div class="kpi-info">
+              <span>Stock Bajo (&le; 5)</span>
+              <h3 style="font-size: 1.1rem; color: ${stockBajoSuc > 0 ? 'var(--amber)' : 'inherit'};">${stockBajoSuc}</h3>
+            </div>
           </div>
         </div>
+
+        <details style="margin-top: 0.5rem; background: var(--bg-primary); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color);">
+          <summary style="cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--text-secondary);">Ver últimas 5 ventas de esta sucursal</summary>
+          <div class="table-responsive" style="margin-top: 0.5rem;">
+            <table class="data-table" style="font-size: 0.85rem;">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Cliente</th>
+                  <th>Estilista</th>
+                  <th>Pago</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${ventasSuc.length === 0 ? `<tr><td colspan="5" class="text-center">Sin ventas registradas</td></tr>` : 
+                  ventasSuc.slice(-5).reverse().map(v => `
+                    <tr>
+                      <td>${v.fecha}</td>
+                      <td>${appData.clientes.find(c => c.id === v.clienteId)?.nombre || 'Ocasional'}</td>
+                      <td>${appData.estilistas.find(e => e.id === v.estilistaId)?.nombre || 'General'}</td>
+                      <td>${v.metodoPago}</td>
+                      <td><strong>$${v.total.toFixed(2)}</strong></td>
+                    </tr>
+                  `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
     `;
   }).join('');
-
-  const selectReportes = document.getElementById('filtroReporteSucursal');
-  if (selectReportes) {
-    selectReportes.innerHTML = `<option value="todas">Todas las Sucursales (Consolidado)</option>` + 
-      appData.sucursales.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
-  }
 }
 
-function limpiarFiltrosFechasReportes() {
-  document.getElementById('reporteFechaInicio').value = '';
-  document.getElementById('reporteFechaFin').value = '';
-  actualizarGraficosSuperAdmin();
+function cambiarSucursalYVerPOS(idSucursal) {
+  appData.sucursalActiva = idSucursal;
+  renderizarSucursales();
+  const posBtn = document.querySelector('.nav-btn[data-tab="pos"]');
+  activarPestana(posBtn, 'pos');
 }
 
 function actualizarGraficosSuperAdmin() {
-  const selectFilter = document.getElementById('filtroReporteSucursal');
-  const sucursalIdSeleccionada = selectFilter ? selectFilter.value : 'todas';
-  
   const fechaInicio = document.getElementById('reporteFechaInicio').value;
   const fechaFin = document.getElementById('reporteFechaFin').value;
+  const filtroSucursal = document.getElementById('filtroReporteSucursal')?.value || 'todas';
 
-  const elemC1 = document.getElementById('chartServiciosPopulares');
-  const elemC2 = document.getElementById('chartEstilistasVentas');
-  const elemC3 = document.getElementById('chartIngresosSemanales');
-
-  if (!elemC1 || !elemC2 || !elemC3) return;
-
-  const ctx1 = elemC1.getContext('2d');
-  const ctx2 = elemC2.getContext('2d');
-  const ctx3 = elemC3.getContext('2d');
-
-  if (window.repChart1) window.repChart1.destroy();
-  if (window.repChart2) window.repChart2.destroy();
-  if (window.repChart3) window.repChart3.destroy();
-
-  let ventasFiltradas = appData.ventas;
-  if (sucursalIdSeleccionada !== 'todas') {
-    ventasFiltradas = ventasFiltradas.filter(v => v.sucursalId === sucursalIdSeleccionada);
+  // Filtrar ventas según sucursal y rango de fechas opcional
+  let ventasFiltradas = [...appData.ventas];
+  if (filtroSucursal !== 'todas') {
+    ventasFiltradas = ventasFiltradas.filter(v => v.sucursalId === filtroSucursal);
   }
   if (fechaInicio) {
     ventasFiltradas = ventasFiltradas.filter(v => v.fecha >= fechaInicio);
@@ -427,165 +450,112 @@ function actualizarGraficosSuperAdmin() {
     ventasFiltradas = ventasFiltradas.filter(v => v.fecha <= fechaFin);
   }
 
-  const contadorServicios = {};
-  appData.servicios.forEach(s => contadorServicios[s.id] = 0);
+  if (window.repChart1) window.repChart1.destroy();
+  if (window.repChart2) window.repChart2.destroy();
+  if (window.repChart3) window.repChart3.destroy();
 
-  ventasFiltradas.forEach(v => {
-    if (Array.isArray(v.items)) {
-      v.items.forEach(item => {
-        if (item.tipo === 'servicio') {
-          contadorServicios[item.id] = (contadorServicios[item.id] || 0) + (item.cantidad || 1);
-        }
-      });
-    }
-  });
-
-  const labelsServicios = appData.servicios.map(s => s.nombre);
-  const dataServicios = appData.servicios.map(s => contadorServicios[s.id] || s.usosCount || 0);
-
-  window.repChart1 = new Chart(ctx1, {
+  // 1. Gráfico de Servicios Más Solicitados
+  window.repChart1 = new Chart(document.getElementById('chartServiciosPopulares').getContext('2d'), {
     type: 'pie',
-    data: {
-      labels: labelsServicios,
-      datasets: [{
-        data: dataServicios,
-        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6'],
-        borderWidth: 2,
-        borderColor: 'var(--bg-card)'
-      }]
+    data: { 
+      labels: appData.servicios.map(s => s.nombre), 
+      datasets: [{ 
+        data: appData.servicios.map(s => s.usosCount || 0), 
+        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6'] 
+      }] 
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: { color: 'var(--text-primary)', font: { size: 11 } }
-        }
-      }
-    }
+    options: { responsive: true, maintainAspectRatio: false }
   });
 
-  let estilistasFiltrados = appData.estilistas;
-  if (sucursalIdSeleccionada !== 'todas') {
-    estilistasFiltrados = appData.estilistas.filter(e => e.sucursalId === sucursalIdSeleccionada);
-  }
+  // 2. Gráfico de Ventas por Estilista (Recogiendo datos reales de las ventas filtradas)
+  const estilistasSucursal = filtroSucursal === 'todas' 
+    ? appData.estilistas 
+    : appData.estilistas.filter(e => e.sucursalId === filtroSucursal);
 
-  const gananciasEstilista = {};
-  estilistasFiltrados.forEach(e => gananciasEstilista[e.id] = 0);
-
-  ventasFiltradas.forEach(v => {
-    if (gananciasEstilista[v.estilistaId] !== undefined) {
-      gananciasEstilista[v.estilistaId] += (v.total || 0);
-    }
+  const ventasPorEstilista = estilistasSucursal.map(e => {
+    return ventasFiltradas
+      .filter(v => (v.estilistaId || v.estilista_id) === e.id)
+      .reduce((sum, v) => sum + v.total, 0);
   });
 
-  window.repChart2 = new Chart(ctx2, {
+  window.repChart2 = new Chart(document.getElementById('chartEstilistasVentas').getContext('2d'), {
     type: 'bar',
-    data: {
-      labels: estilistasFiltrados.map(e => e.nombre),
-      datasets: [{
-        label: 'Ventas Total ($)',
-        data: estilistasFiltrados.map(e => gananciasEstilista[e.id] || 0),
-        backgroundColor: '#3b82f6',
-        borderRadius: 6
-      }]
+    data: { 
+      labels: estilistasSucursal.map(e => e.nombre), 
+      datasets: [{ 
+        label: 'Ventas ($)', 
+        data: ventasPorEstilista, 
+        backgroundColor: '#3b82f6' 
+      }] 
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: 'var(--text-secondary)' }, grid: { display: false } },
-        y: { ticks: { color: 'var(--text-secondary)' }, grid: { color: 'var(--border-color)' } }
-      }
-    }
+    options: { responsive: true, maintainAspectRatio: false }
   });
 
-  const ventasPorFechaMap = {};
+  // 3. Gráfico de Rendimiento de Ventas por Fecha
+  const ventasPorFecha = {};
   ventasFiltradas.forEach(v => {
-    ventasPorFechaMap[v.fecha] = (ventasPorFechaMap[v.fecha] || 0) + v.total;
+    ventasPorFecha[v.fecha] = (ventasPorFecha[v.fecha] || 0) + v.total;
   });
 
-  let fechasOrdenadas = Object.keys(ventasPorFechaMap).sort();
-  if (fechasOrdenadas.length === 0) {
-    fechasOrdenadas = ['Sin Datos'];
-    ventasPorFechaMap['Sin Datos'] = 0;
-  }
+  const fechasOrdenadas = Object.keys(ventasPorFecha).sort();
+  const totalesFechas = fechasOrdenadas.map(f => ventasPorFecha[f]);
 
-  window.repChart3 = new Chart(ctx3, {
+  window.repChart3 = new Chart(document.getElementById('chartIngresosSemanales').getContext('2d'), {
     type: 'line',
-    data: {
-      labels: fechasOrdenadas,
-      datasets: [{
-        label: 'Rendimiento Ventas ($)',
-        data: fechasOrdenadas.map(f => ventasPorFechaMap[f]),
-        borderColor: '#6366f1',
-        backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    data: { 
+      labels: fechasOrdenadas.length > 0 ? fechasOrdenadas : ['Sin datos'], 
+      datasets: [{ 
+        label: 'Ingresos ($)', 
+        data: totalesFechas.length > 0 ? totalesFechas : [0], 
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
         fill: true,
-        tension: 0.3,
-        pointBackgroundColor: '#10b981',
-        pointRadius: 4
-      }]
+        tension: 0.2
+      }] 
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: 'var(--text-primary)' } } },
-      scales: {
-        x: { ticks: { color: 'var(--text-secondary)' }, grid: { display: false } },
-        y: { ticks: { color: 'var(--text-secondary)' }, grid: { color: 'var(--border-color)' } }
-      }
-    }
+    options: { responsive: true, maintainAspectRatio: false }
   });
 }
 
-// CAJA / POS
+// ==========================================
+// MÓDULO POS, WHATSAPP Y FIDELIDAD
+// ==========================================
+
 function renderizarPOS() {
   const grid = document.getElementById('posCatalogGrid');
   if (!grid) return;
-  const prodsSucursal = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva);
-  const items = [...appData.servicios, ...prodsSucursal];
-
-  grid.innerHTML = items.map(item => `
-    <div class="pos-item-card" onclick="agregarAlCarrito('${item.id}')">
-      <strong>${item.nombre}</strong>
-      <p>$${item.precio.toFixed(2)}</p>
-      <small>${item.tipo.toUpperCase()}</small>
+  const prods = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva);
+  grid.innerHTML = [...appData.servicios, ...prods].map(i => `
+    <div class="pos-item-card" onclick="agregarAlCarrito('${i.id}')">
+      <strong>${i.nombre}</strong>
+      <p>$${i.precio.toFixed(2)}</p>
     </div>
   `).join('');
-
   renderizarCarritoPOS();
 }
 
 function filtrarPOSCatalog(tipo, btn) {
   document.querySelectorAll('.pos-tabs .tab-link').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-
   const grid = document.getElementById('posCatalogGrid');
-  const prodsSucursal = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva);
-  let items = [...appData.servicios, ...prodsSucursal];
-
+  const prods = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva);
+  let items = [...appData.servicios, ...prods];
   if (tipo !== 'todos') items = items.filter(i => i.tipo === tipo);
-
-  grid.innerHTML = items.map(item => `
-    <div class="pos-item-card" onclick="agregarAlCarrito('${item.id}')">
-      <strong>${item.nombre}</strong>
-      <p>$${item.precio.toFixed(2)}</p>
-      <small>${item.tipo.toUpperCase()}</small>
+  grid.innerHTML = items.map(i => `
+    <div class="pos-item-card" onclick="agregarAlCarrito('${i.id}')">
+      <strong>${i.nombre}</strong>
+      <p>$${i.precio.toFixed(2)}</p>
     </div>
   `).join('');
 }
 
-function agregarAlCarrito(itemId) {
-  const prodsSucursal = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva);
-  const item = [...appData.servicios, ...prodsSucursal].find(i => i.id === itemId);
+function agregarAlCarrito(id) {
+  const prods = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva);
+  const item = [...appData.servicios, ...prods].find(i => i.id === id);
   if (!item) return;
-
-  const existe = carritoPOS.find(i => i.id === itemId);
-  if (existe) { existe.cantidad++; } 
-  else { carritoPOS.push({ ...item, cantidad: 1 }); }
-
+  const existe = carritoPOS.find(i => i.id === id);
+  if (existe) existe.cantidad++;
+  else carritoPOS.push({ ...item, cantidad: 1 });
   renderizarCarritoPOS();
 }
 
@@ -593,720 +563,352 @@ function renderizarCarritoPOS() {
   const container = document.getElementById('cartItemsList');
   if (!container) return;
   if (carritoPOS.length === 0) {
-    container.innerHTML = '<p class="empty-msg">No hay ítems agregados</p>';
-    calcularTotalesPOS();
+    container.innerHTML = '<p class="empty-msg">No hay ítems</p>';
+    document.getElementById('posTotal').innerText = '$0.00';
     return;
   }
-
-  container.innerHTML = carritoPOS.map((item, index) => `
+  container.innerHTML = carritoPOS.map((i, idx) => `
     <div class="cart-item">
-      <div>
-        <strong>${item.nombre}</strong><br>
-        <small>$${item.precio.toFixed(2)} x ${item.cantidad}</small>
-      </div>
-      <div>
-        <strong>$${(item.precio * item.cantidad).toFixed(2)}</strong>
-        <button class="btn btn-danger" style="padding:2px 6px;" onclick="quitarDelCarrito(${index})">&times;</button>
-      </div>
+      <div><strong>${i.nombre}</strong><br><small>$${i.precio.toFixed(2)} x ${i.cantidad}</small></div>
+      <div><strong>$${(i.precio * i.cantidad).toFixed(2)}</strong> <button class="btn btn-danger" style="padding:2px 6px;" onclick="quitarCarrito(${idx})">&times;</button></div>
     </div>
   `).join('');
-
-  calcularTotalesPOS();
-}
-
-function quitarDelCarrito(index) {
-  carritoPOS.splice(index, 1);
-  renderizarCarritoPOS();
-}
-
-function calcularTotalesPOS() {
   const total = carritoPOS.reduce((sum, i) => sum + (i.precio * i.cantidad), 0);
-  const elTotal = document.getElementById('posTotal');
-  if (elTotal) elTotal.innerText = `$${total.toFixed(2)}`;
-  calcularVuelto();
+  document.getElementById('posTotal').innerText = `$${total.toFixed(2)}`;
+}
+
+function quitarCarrito(idx) {
+  carritoPOS.splice(idx, 1);
+  renderizarCarritoPOS();
 }
 
 function toggleSeccionEfectivo() {
   const metodo = document.getElementById('posMetodoPago').value;
-  const seccion = document.getElementById('seccionEfectivo');
-  if (seccion) {
-    seccion.style.display = (metodo === 'Efectivo') ? 'block' : 'none';
-  }
+  document.getElementById('seccionEfectivo').style.display = metodo === 'Efectivo' ? 'block' : 'none';
 }
 
 function calcularVuelto() {
-  const metodo = document.getElementById('posMetodoPago').value;
-  if (metodo !== 'Efectivo') return;
-
   const total = carritoPOS.reduce((sum, i) => sum + (i.precio * i.cantidad), 0);
-  const efectivoRecibido = parseFloat(document.getElementById('posEfectivoRecibido').value) || 0;
-  const vuelto = efectivoRecibido - total;
+  const efectivo = parseFloat(document.getElementById('posEfectivoRecibido').value) || 0;
+  const vuelto = efectivo - total;
+  document.getElementById('posVuelto').innerText = `$${Math.max(0, vuelto).toFixed(2)}`;
+}
 
-  const lblVuelto = document.getElementById('posVuelto');
-  if (lblVuelto) {
-    if (vuelto >= 0) {
-      lblVuelto.innerText = `$${vuelto.toFixed(2)}`;
-      lblVuelto.style.color = 'var(--emerald)';
-    } else {
-      lblVuelto.innerText = `Faltan $${Math.abs(vuelto).toFixed(2)}`;
-      lblVuelto.style.color = 'var(--danger)';
+function formatearTelefonoWhatsApp(telefono) {
+  if (!telefono) return '';
+  let limpio = telefono.replace(/\D/g, '');
+  if (limpio.startsWith('0') && limpio.length === 10) {
+    limpio = '593' + limpio.substring(1);
+  } else if (limpio.length === 9 && limpio.startsWith('9')) {
+    limpio = '593' + limpio;
+  }
+  return limpio;
+}
+
+async function actualizarFidelidadCliente(clienteId, nuevosServicios) {
+  if (!clienteId) return false;
+  const cliente = appData.clientes.find(c => c.id === clienteId);
+  if (!cliente) return false;
+
+  const actual = cliente.serviciosAcumulados || 0;
+  const totalAcumulado = Math.min(META_SERVICIOS_GRATIS, actual + nuevosServicios);
+  cliente.serviciosAcumulados = totalAcumulado;
+
+  localStorage.setItem(`fidelidad_${clienteId}`, totalAcumulado.toString());
+  try {
+    await supabaseClient
+      .from('clientes')
+      .update({ servicios_acumulados: totalAcumulado })
+      .eq('id', clienteId);
+  } catch (err) {
+    console.warn('No se pudo actualizar servicios_acumulados en Supabase:', err.message);
+  }
+
+  poblarSelects();
+  if (moduloActual === 'clientes') renderizarClientes();
+
+  return totalAcumulado >= META_SERVICIOS_GRATIS;
+}
+
+async function canjearCorteGratis(clienteId) {
+  const cliente = appData.clientes.find(c => c.id === clienteId);
+  if (!cliente) return;
+
+  if (confirm(`¿Confirmas que ${cliente.nombre} ya canjeó su CORTE GRATIS? Su barra volverá a 0%.`)) {
+    cliente.serviciosAcumulados = 0;
+    localStorage.setItem(`fidelidad_${clienteId}`, '0');
+    try {
+      await supabaseClient
+        .from('clientes')
+        .update({ servicios_acumulados: 0 })
+        .eq('id', clienteId);
+    } catch (err) {
+      console.warn('Error al reiniciar fidelidad en BD:', err.message);
     }
+    renderizarClientes();
+    poblarSelects();
   }
 }
 
-function procesarPagoPOS() {
-  if (carritoPOS.length === 0) return alert('El carrito está vacío');
-
-  const total = carritoPOS.reduce((sum, i) => sum + (i.precio * i.cantidad), 0);
-  const metodoPago = document.getElementById('posMetodoPago').value;
-
-  let efectivoRecibido = 0;
-  let vuelto = 0;
-
-  if (metodoPago === 'Efectivo') {
-    efectivoRecibido = parseFloat(document.getElementById('posEfectivoRecibido').value) || 0;
-    if (efectivoRecibido < total) {
-      alert('El efectivo recibido es menor al total a pagar.');
-      return;
-    }
-    vuelto = efectivoRecibido - total;
+function enviarWhatsAppCorteGratis(clienteId) {
+  const cliente = appData.clientes.find(c => c.id === clienteId);
+  if (!cliente || !cliente.telefono) {
+    alert('Este cliente no tiene un número de teléfono válido.');
+    return;
   }
+
+  const telefonoWA = formatearTelefonoWhatsApp(cliente.telefono);
+  const mensaje = 
+`🎉✂️ *¡FELICIDADES ${cliente.nombre.toUpperCase()}!* 💈🎉
+
+Has completado tus *8 servicios (100%)* en *Leguend Barber Studio* y acabas de ganar un *¡CORTE COMPLETAMENTE GRATIS!* 🎁🔥
+
+Presenta este mensaje en cualquiera de nuestras sucursales para reclamar tu premio en tu próxima visita. ¡Gracias por tu fidelidad! 🙌✨`;
+
+  window.open(`https://wa.me/${telefonoWA}?text=${encodeURIComponent(mensaje)}`, '_blank');
+}
+
+function enviarWhatsAppAgradecimiento(venta) {
+  const clienteId = venta.clienteId || venta.cliente_id;
+  const clienteObj = appData.clientes.find(c => c.id === clienteId);
+
+  if (!clienteObj || !clienteObj.telefono) {
+    console.warn('No se envió WhatsApp: Cliente ocasional o sin teléfono registrado.');
+    return;
+  }
+
+  const telefonoWA = formatearTelefonoWhatsApp(clienteObj.telefono);
+  if (!telefonoWA) return;
+
+  const sucursalObj = appData.sucursales.find(s => s.id === (venta.sucursalId || venta.sucursal_id));
+  const estilistaObj = appData.estilistas.find(e => e.id === (venta.estilistaId || venta.estilista_id));
+
+  const nombreCliente = clienteObj.nombre;
+  const nombreSucursal = sucursalObj ? sucursalObj.nombre : 'Leguend Barber Studio';
+  const nombreEstilista = estilistaObj ? estilistaObj.nombre : 'Nuestro equipo';
+  const metodo = venta.metodoPago || venta.metodo_pago;
+
+  const acumulados = clienteObj.serviciosAcumulados || 0;
+  const porcentaje = Math.round((acumulados / META_SERVICIOS_GRATIS) * 100);
+
+  const detalleItems = (venta.items || [])
+    .map(item => `• ${item.cantidad}x ${item.nombre} ($${(item.precio * item.cantidad).toFixed(2)})`)
+    .join('\n');
+
+  const textoFidelidad = acumulados >= META_SERVICIOS_GRATIS
+    ? `\n🎁 *¡FELICIDADES! Completaste ${acumulados}/8 servicios (100%) y GANASTE UN CORTE GRATIS en tu próxima visita.* 🎉`
+    : `\n⭐ *Progreso Corte Gratis:* ${acumulados}/8 servicios (${porcentaje}%)`;
+
+  const mensaje = 
+`✂️ *LEGUEND BARBER STUDIO* 💈
+¡Hola *${nombreCliente}*! Muchas gracias por tu visita y preferencia. 🙌
+
+Aquí tienes el resumen de tu atención en *${nombreSucursal}*:
+📅 *Fecha:* ${venta.fecha}
+💇‍♂️ *Atendido por:* ${nombreEstilista}
+
+*Detalle:*
+${detalleItems}
+
+💳 *Método de pago:* ${metodo}
+💵 *Total pagado:* $${venta.total.toFixed(2)}
+${textoFidelidad}
+
+¡Esperamos verte pronto de nuevo! ✨`;
+
+  const url = `https://wa.me/${telefonoWA}?text=${encodeURIComponent(mensaje)}`;
+  window.open(url, '_blank');
+}
+
+async function procesarPagoPOS() {
+  if (carritoPOS.length === 0) return alert('El carrito está vacío');
+  const total = carritoPOS.reduce((sum, i) => sum + (i.precio * i.cantidad), 0);
+  const clienteId = document.getElementById('posCliente').value || null;
+  
+  const cantidadServiciosComprados = carritoPOS
+    .filter(item => item.tipo === 'servicio')
+    .reduce((sum, item) => sum + item.cantidad, 0);
 
   const venta = {
     id: 'v_' + Date.now(),
-    sucursalId: appData.sucursalActiva,
+    sucursal_id: appData.sucursalActiva,
     fecha: new Date().toISOString().split('T')[0],
-    clienteId: document.getElementById('posCliente').value || null,
-    estilistaId: document.getElementById('posEstilista').value,
-    metodoPago: metodoPago,
-    efectivoRecibido: metodoPago === 'Efectivo' ? efectivoRecibido : null,
-    vuelto: metodoPago === 'Efectivo' ? vuelto : null,
-    items: [...carritoPOS],
-    total
+    cliente_id: clienteId,
+    estilista_id: document.getElementById('posEstilista').value || null,
+    metodo_pago: document.getElementById('posMetodoPago').value,
+    total,
+    items: [...carritoPOS]
   };
 
-  carritoPOS.forEach(cItem => {
-    if (cItem.tipo === 'producto') {
-      const prod = appData.productos.find(p => p.id === cItem.id);
-      if (prod) prod.stock = Math.max(0, prod.stock - cItem.cantidad);
-    } else if (cItem.tipo === 'servicio') {
-      const serv = appData.servicios.find(s => s.id === cItem.id);
-      if (serv) serv.usosCount = (serv.usosCount || 0) + cItem.cantidad;
-    }
-  });
+  await supabaseClient.from('ventas').insert([venta]);
+  
+  const ventaLocal = { 
+    ...venta, 
+    sucursalId: venta.sucursal_id, 
+    clienteId: venta.cliente_id, 
+    estilistaId: venta.estilista_id, 
+    metodoPago: venta.metodo_pago 
+  };
+  appData.ventas.push(ventaLocal);
 
-  appData.ventas.push(venta);
-  guardarDatos();
-  mostrarTicket(venta);
-  agradecerPorWhatsApp(venta.clienteId);
+  let ganoPremio = false;
+  if (clienteId && cantidadServiciosComprados > 0) {
+    ganoPremio = await actualizarFidelidadCliente(clienteId, cantidadServiciosComprados);
+  } else if (clienteId) {
+    const cli = appData.clientes.find(c => c.id === clienteId);
+    ganoPremio = cli && (cli.serviciosAcumulados || 0) >= META_SERVICIOS_GRATIS;
+  }
+  
+  mostrarTicket(ventaLocal, ganoPremio);
+  enviarWhatsAppAgradecimiento(ventaLocal);
 
   carritoPOS = [];
-  const inpEfectivo = document.getElementById('posEfectivoRecibido');
-  if (inpEfectivo) inpEfectivo.value = '';
-  const lblVuelto = document.getElementById('posVuelto');
-  if (lblVuelto) lblVuelto.innerText = '$0.00';
+  document.getElementById('posEfectivoRecibido').value = '';
+  document.getElementById('posVuelto').innerText = '$0.00';
   renderizarCarritoPOS();
 }
 
-function agradecerPorWhatsApp(clienteId) {
-  const cliente = appData.clientes.find(c => c.id === clienteId);
-  if (!cliente || !cliente.telefono) return;
+function mostrarTicket(v, ganoPremio = false) {
+  document.getElementById('ticketSucursal').innerText = appData.sucursales.find(s => s.id === (v.sucursalId || v.sucursal_id))?.nombre || '';
+  document.getElementById('ticketFechaHora').innerText = v.fecha;
+  
+  const clienteId = v.clienteId || v.cliente_id;
+  const clienteObj = appData.clientes.find(c => c.id === clienteId);
+  document.getElementById('ticketCliente').innerText = clienteObj?.nombre || 'General';
+  document.getElementById('ticketEstilista').innerText = appData.estilistas.find(e => e.id === (v.estilistaId || v.estilista_id))?.nombre || 'General';
+  document.getElementById('ticketMetodo').innerText = v.metodoPago || v.metodo_pago;
+  document.getElementById('ticketTotal').innerText = v.total.toFixed(2);
 
-  const sucursal = appData.sucursales.find(s => s.id === appData.sucursalActiva);
-  const nombreSucursal = sucursal ? sucursal.nombre : 'Leguend Barber Studio';
-
-  let tel = cliente.telefono.replace(/\D/g, '');
-  if (tel.startsWith('09') && tel.length === 10) tel = '593' + tel.slice(1);
-
-  const texto = `¡Hola ${cliente.nombre}! Gracias por confiar en nosotros y visitarnos en ${nombreSucursal}. ✂️`;
-  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, '_blank');
-}
-
-function mostrarTicket(venta) {
-  const sucursal = appData.sucursales.find(s => s.id === venta.sucursalId)?.nombre || '';
-  const cliente = appData.clientes.find(c => c.id === venta.clienteId)?.nombre || 'General';
-  const estilista = appData.estilistas.find(e => e.id === venta.estilistaId)?.nombre || 'General';
-
-  document.getElementById('ticketSucursal').innerText = sucursal;
-  document.getElementById('ticketFechaHora').innerText = venta.fecha || new Date().toLocaleString();
-  document.getElementById('ticketCliente').innerText = cliente;
-  document.getElementById('ticketEstilista').innerText = estilista;
-  document.getElementById('ticketMetodo').innerText = venta.metodoPago;
-  document.getElementById('ticketTotal').innerText = venta.total.toFixed(2);
-
-  const efectivoContainer = document.getElementById('ticketEfectivoContainer');
-  if (venta.metodoPago === 'Efectivo' && venta.efectivoRecibido != null) {
-    document.getElementById('ticketEfectivo').innerText = venta.efectivoRecibido.toFixed(2);
-    document.getElementById('ticketVuelto').innerText = venta.vuelto.toFixed(2);
-    efectivoContainer.style.display = 'block';
-  } else {
-    efectivoContainer.style.display = 'none';
+  const btnWa = document.getElementById('btnTicketWhatsapp');
+  if (btnWa) {
+    if (clienteObj && clienteObj.telefono) {
+      btnWa.style.display = 'inline-flex';
+      btnWa.onclick = () => enviarWhatsAppAgradecimiento(v);
+    } else {
+      btnWa.style.display = 'none';
+    }
   }
 
-  document.getElementById('ticketDetalles').innerHTML = venta.items.map(i => `
-    <div style="display:flex; justify-content:space-between;">
-      <span>${i.cantidad}x ${i.nombre}</span>
-      <span>$${(i.precio * i.cantidad).toFixed(2)}</span>
-    </div>
-  `).join('');
+  const btnPremioWa = document.getElementById('btnTicketPremioWhatsapp');
+  const tienePremio = ganoPremio || (clienteObj && (clienteObj.serviciosAcumulados || 0) >= META_SERVICIOS_GRATIS);
+  if (btnPremioWa) {
+    if (clienteObj && clienteObj.telefono && tienePremio) {
+      btnPremioWa.style.display = 'inline-flex';
+      btnPremioWa.onclick = () => enviarWhatsAppCorteGratis(clienteObj.id);
+    } else {
+      btnPremioWa.style.display = 'none';
+    }
+  }
 
   abrirModal('modalTicket');
 }
 
-function reimprimirTicket(ventaId) {
-  const venta = appData.ventas.find(v => v.id === ventaId);
-  if (venta) {
-    mostrarTicket(venta);
-  } else {
-    alert('Factura no encontrada');
-  }
+function reimprimirTicket(id) {
+  const v = appData.ventas.find(x => x.id === id);
+  if (v) mostrarTicket(v);
 }
 
+// ==========================================
 // ESTILISTAS
-function calcularEstadisticasEstilista(estilistaId) {
-  let totalServicios = 0;
-  let totalGanancias = 0;
-
-  appData.ventas.forEach(v => {
-    if (v.estilistaId === estilistaId && Array.isArray(v.items)) {
-      v.items.forEach(item => {
-        if (item.tipo === 'servicio') {
-          totalServicios += (item.cantidad || 1);
-        }
-      });
-      totalGanancias += (v.total || 0);
-    }
-  });
-
-  return { totalServicios, totalGanancias };
-}
+// ==========================================
 
 function renderizarEstilistas() {
   const container = document.getElementById('listaEstilistas');
   if (!container) return;
-  const estilistasSucursal = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva);
-
-  if (estilistasSucursal.length === 0) {
-    container.innerHTML = `
-      <div class="card text-center" style="grid-column: 1 / -1; padding: 2rem;">
-        <p style="color: var(--text-secondary);">No hay estilistas registrados en esta sucursal.</p>
-      </div>`;
-    return;
-  }
-
-  const totalServiciosSucursal = estilistasSucursal.reduce((acc, est) => {
-    return acc + calcularEstadisticasEstilista(est.id).totalServicios;
-  }, 0);
-
-  container.innerHTML = estilistasSucursal.map(e => {
-    const stats = calcularEstadisticasEstilista(e.id);
-    const porcentajeParticipacion = totalServiciosSucursal > 0 
-      ? Math.round((stats.totalServicios / totalServiciosSucursal) * 100) 
-      : 0;
-
-    return `
-      <div class="card text-center">
-        <i class="fa-solid fa-circle-user" style="font-size:3rem; color: var(--accent);"></i>
-        <h3 style="margin-top:0.5rem;">${e.nombre}</h3>
-        <p style="color:var(--text-secondary); font-size:0.85rem;">Cédula: ${e.cedula || 'N/A'}</p>
-        <p style="color:var(--text-secondary); font-size:0.85rem;">Nacimiento: ${e.nacimiento || 'N/A'}</p>
-        
-        <div style="background: var(--bg-primary); padding: 0.75rem; border-radius: 8px; margin: 0.75rem 0; border: 1px solid var(--border-color); text-align: left;">
-          <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px;">
-            <span style="color: var(--text-secondary);">Servicios realizados:</span>
-            <strong>${stats.totalServicios} (${porcentajeParticipacion}%)</strong>
-          </div>
-          <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
-            <span style="color: var(--text-secondary);">Ganancias generadas:</span>
-            <strong style="color: var(--emerald);">$${stats.totalGanancias.toFixed(2)}</strong>
-          </div>
-        </div>
-
-        <div style="border-top:1px solid var(--border-color); padding-top:0.5rem; display: flex; justify-content: flex-end; align-items: center;">
-          <div style="display: flex; gap: 0.25rem;">
-            <button class="btn btn-primary btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="abrirModalEstilista('${e.id}')" title="Editar Estilista">
-              <i class="fa-solid fa-pen"></i>
-            </button>
-            <button class="btn btn-danger btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="eliminarEstilista('${e.id}')" title="Eliminar Estilista">
-              <i class="fa-solid fa-trash"></i>
-            </button>
-          </div>
-        </div>
+  const estSuc = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva);
+  container.innerHTML = estSuc.length === 0 ? '<p>No hay estilistas.</p>' : estSuc.map(e => `
+    <div class="card text-center">
+      <h3>${e.nombre}</h3>
+      <p>Cédula: ${e.cedula || 'N/A'}</p>
+      <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 0.75rem;">
+        <button class="btn btn-primary btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="abrirModalEstilista('${e.id}')" title="Editar Estilista">
+          <i class="fa-solid fa-pen"></i>
+        </button>
+        <button class="btn btn-danger btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="eliminarEstilista('${e.id}')" title="Eliminar Estilista">
+          <i class="fa-solid fa-trash"></i>
+        </button>
       </div>
-    `;
-  }).join('');
+    </div>
+  `).join('');
 }
 
-function exportarEstilistasExcel() {
-  const estilistasSucursal = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva);
-  if (!estilistasSucursal || estilistasSucursal.length === 0) {
-    alert('No hay estilistas registrados en esta sucursal para exportar.');
-    return;
-  }
-
-  let csvContent = "\uFEFF";
-  csvContent += "Nombre;Cédula;Fecha de Nacimiento;Servicios Realizados;Ganancias Generadas ($)\n";
-
-  estilistasSucursal.forEach(e => {
-    const stats = calcularEstadisticasEstilista(e.id);
-    const nombre = `"${(e.nombre || '').replace(/"/g, '""')}"`;
-    const cedula = `"${(e.cedula || 'N/A').replace(/"/g, '""')}"`;
-    const nacimiento = `"${(e.nacimiento || 'N/A').replace(/"/g, '""')}"`;
-    const servicios = stats.totalServicios;
-    const ganancias = stats.totalGanancias.toFixed(2);
-
-    csvContent += `${nombre};${cedula};${nacimiento};${servicios};${ganancias}\n`;
-  });
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  
-  const sucursalActual = appData.sucursales.find(s => s.id === appData.sucursalActiva)?.nombre || 'Sucursal';
-  const fechaHoy = new Date().toISOString().split('T')[0];
-  link.setAttribute('href', url);
-  link.setAttribute('download', `Estilistas_${sucursalActual.replace(/\s+/g, '_')}_${fechaHoy}.csv`);
-  document.body.appendChild(link);
-  
-  link.click();
-  document.body.removeChild(link);
-}
-
-function abrirModalEstilista(id = null) {
-  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-  const titulo = document.getElementById('modalEstilistaTitulo');
-  if (id) {
-    titulo.innerText = 'Editar Estilista';
-    const estilista = appData.estilistas.find(e => e.id === id);
-    if (estilista) {
-      document.getElementById('estilistaId').value = estilista.id;
-      document.getElementById('estilistaNombre').value = estilista.nombre;
-      document.getElementById('estilistaCedula').value = estilista.cedula || '';
-      document.getElementById('estilistaNacimiento').value = estilista.nacimiento || '';
-    }
-  } else {
-    titulo.innerText = 'Registrar Estilista';
-    document.getElementById('formEstilista').reset();
-    document.getElementById('estilistaId').value = '';
-  }
-  abrirModal('modalEstilista');
-}
-
-function guardarEstilista(e) {
+async function guardarEstilista(e) {
   e.preventDefault();
   if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-
   const id = document.getElementById('estilistaId').value;
   const nombre = document.getElementById('estilistaNombre').value;
   const cedula = document.getElementById('estilistaCedula').value;
   const nacimiento = document.getElementById('estilistaNacimiento').value;
 
   if (id) {
-    const estilista = appData.estilistas.find(e => e.id === id);
-    if (estilista) {
-      estilista.nombre = nombre;
-      estilista.cedula = cedula;
-      estilista.nacimiento = nacimiento;
-    }
+    await supabaseClient.from('estilistas').update({ nombre, cedula, nacimiento }).eq('id', id);
+    const idx = appData.estilistas.findIndex(x => x.id === id);
+    if (idx !== -1) appData.estilistas[idx] = { ...appData.estilistas[idx], nombre, cedula, nacimiento };
   } else {
-    const nuevo = {
-      id: 'e_' + Date.now(),
-      sucursalId: appData.sucursalActiva,
-      nombre,
-      cedula,
-      nacimiento
-    };
-    appData.estilistas.push(nuevo);
+    const nuevo = { id: 'e_' + Date.now(), sucursal_id: appData.sucursalActiva, nombre, cedula, nacimiento };
+    await supabaseClient.from('estilistas').insert([nuevo]);
+    appData.estilistas.push({ ...nuevo, sucursalId: nuevo.sucursal_id });
   }
-
-  guardarDatos();
   cerrarModal('modalEstilista');
   renderizarEstilistas();
   poblarSelects();
 }
 
-function eliminarEstilista(id) {
+async function eliminarEstilista(id) {
   if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
+  const est = appData.estilistas.find(e => e.id === id);
+  if (!est) return;
 
-  const estilista = appData.estilistas.find(e => e.id === id);
-  const nombre = estilista ? estilista.nombre : 'este estilista';
-
-  if (confirm(`¿Estás seguro de eliminar a ${nombre}?`)) {
+  if (confirm(`¿Estás seguro de eliminar al estilista "${est.nombre}"?`)) {
+    const { error } = await supabaseClient.from('estilistas').delete().eq('id', id);
+    if (error) {
+      alert('Error al eliminar el estilista: ' + error.message);
+      return;
+    }
     appData.estilistas = appData.estilistas.filter(e => e.id !== id);
-    guardarDatos();
     renderizarEstilistas();
     poblarSelects();
   }
 }
 
+// ==========================================
 // INVENTARIO & SERVICIOS
+// ==========================================
+
 function cambiarTabInventario(tab, btn) {
   document.querySelectorAll('#mod-inventario .tab-link').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  if (tab === 'productos') {
-    document.getElementById('submod-productos').style.display = 'block';
-    document.getElementById('submod-servicios').style.display = 'none';
-  } else {
-    document.getElementById('submod-productos').style.display = 'none';
-    document.getElementById('submod-servicios').style.display = 'block';
-    renderizarServiciosInventario();
-  }
+  document.getElementById('submod-productos').style.display = tab === 'productos' ? 'block' : 'none';
+  document.getElementById('submod-servicios').style.display = tab === 'servicios' ? 'block' : 'none';
+  if (tab === 'servicios') renderizarServiciosInventario();
 }
 
 function renderizarInventario() {
   const tbody = document.getElementById('listaProductos');
   if (!tbody) return;
-  const prodsSucursal = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva);
-  const stockMaxRef = 50;
-
-  tbody.innerHTML = prodsSucursal.map(p => {
-    const fecha = p.fechaCreacion || 'N/A';
-    const porcentaje = Math.min(100, Math.round((p.stock / stockMaxRef) * 100));
-    const esBajo = p.stock <= 5;
-    const barClass = esBajo ? 'bg-danger' : (porcentaje < 40 ? 'bg-amber' : 'bg-emerald');
-
-    return `
-      <tr>
-        <td><strong>${p.nombre}</strong></td>
-        <td>${p.categoria}</td>
-        <td>$${p.precio.toFixed(2)}</td>
-        <td>${fecha}</td>
-        <td>
-          <div class="stock-container">
-            <span class="stock-num">${p.stock} u. (${porcentaje}%)</span>
-            <div class="progress-bar-bg">
-              <div class="progress-bar-fill ${barClass}" style="width: ${porcentaje}%;"></div>
-            </div>
-          </div>
-        </td>
-        <td>
-          ${esBajo 
-            ? '<span class="badge-status badge-Cancelada"><i class="fa-solid fa-triangle-exclamation"></i> Bajo (≤5)</span>' 
-            : '<span class="badge-status badge-Completada">OK</span>'}
-        </td>
-        <td>
+  tbody.innerHTML = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva).map(p => `
+    <tr>
+      <td>${p.nombre}</td>
+      <td>${p.categoria}</td>
+      <td>$${p.precio.toFixed(2)}</td>
+      <td>${p.stock} u.</td>
+      <td>
+        <div style="display: flex; gap: 0.4rem;">
           <button class="btn btn-primary btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="abrirModalProducto('${p.id}')" title="Editar Producto">
             <i class="fa-solid fa-pen"></i>
           </button>
           <button class="btn btn-danger btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="eliminarProducto('${p.id}')" title="Eliminar Producto">
             <i class="fa-solid fa-trash"></i>
           </button>
-        </td>
-      </tr>
-    `;
-  }).join('');
-
-  renderizarServiciosInventario();
+        </div>
+      </td>
+    </tr>
+  `).join('');
 }
 
-function comprobarAvisoCompraInventario() {
-  const prodsBajos = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva && p.stock <= 5);
-  if (prodsBajos.length > 0) {
-    const listaHtml = prodsBajos.map(p => `
-      <li style="padding: 8px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-        <span><strong>${p.nombre}</strong> (${p.categoria})</span>
-        <span class="badge-status badge-Cancelada">Quedan ${p.stock} unid.</span>
-      </li>
-    `).join('');
-    
-    document.getElementById('listaAvisoCompraProductos').innerHTML = listaHtml;
-    abrirModal('modalAvisoCompra');
-  }
-}
-
-function eliminarProducto(id) {
-  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-  if (confirm('¿Estás seguro de eliminar este producto?')) {
-    appData.productos = appData.productos.filter(p => p.id !== id);
-    guardarDatos();
-    renderizarInventario();
-  }
-}
-
-function renderizarServiciosInventario() {
-  const tbody = document.getElementById('listaServiciosInventario');
-  if (!tbody) return;
-
-  tbody.innerHTML = appData.servicios.map(s => {
-    const fecha = s.fechaCreacion || 'N/A';
-    const usos = s.usosCount || 0;
-    return `
-      <tr>
-        <td><strong>${s.nombre}</strong></td>
-        <td>$${s.precio.toFixed(2)}</td>
-        <td>${fecha}</td>
-        <td>
-          <span class="badge-status badge-Confirmada"><i class="fa-solid fa-chart-line"></i> ${usos} usos</span>
-        </td>
-        <td>${s.tipo.toUpperCase()}</td>
-        <td>
-          <button class="btn btn-primary btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="abrirModalServicio('${s.id}')" title="Editar Servicio">
-            <i class="fa-solid fa-pen"></i>
-          </button>
-          <button class="btn btn-danger btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="eliminarServicio('${s.id}')" title="Eliminar Servicio">
-            <i class="fa-solid fa-trash"></i>
-          </button>
-        </td>
-      </tr>
-    `;
-  }).join('');
-}
-
-function eliminarServicio(id) {
-  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-  if (confirm('¿Estás seguro de eliminar este servicio?')) {
-    appData.servicios = appData.servicios.filter(s => s.id !== id);
-    guardarDatos();
-    renderizarServiciosInventario();
-    renderizarPOS();
-  }
-}
-
-// CLIENTES (SIN EMAIL)
-function calcularServiciosCliente(clienteId) {
-  let contador = 0;
-  appData.ventas.forEach(v => {
-    if (v.clienteId === clienteId && Array.isArray(v.items)) {
-      v.items.forEach(item => {
-        if (item.tipo === 'servicio') {
-          contador += (item.cantidad || 1);
-        }
-      });
-    }
-  });
-  return contador;
-}
-
-function renderizarClientes() {
-  const tbody = document.getElementById('listaClientes');
-  if (!tbody) return;
-  const busqueda = document.getElementById('buscarCliente').value.toLowerCase();
-  const filtroFecha = document.getElementById('filtroFechaCreacion').value;
-
-  const filtrados = appData.clientes.filter(c => {
-    const coincideTexto = c.nombre.toLowerCase().includes(busqueda) || c.telefono.includes(busqueda);
-    const coincideFecha = filtroFecha ? c.fechaCreacion === filtroFecha : true;
-    return coincideTexto && coincideFecha;
-  });
-
-  tbody.innerHTML = filtrados.map(c => {
-    const totalServicios = calcularServiciosCliente(c.id);
-    const metaCortes = 8;
-    const pctInt = Math.min(100, Math.round((totalServicios / metaCortes) * 100));
-    const esGratis = totalServicios >= metaCortes;
-
-    let badgeFidelidad = '';
-    if (esGratis) {
-      badgeFidelidad = `
-        <button class="btn-loyalty-green" onclick="enviarSmsGratisWhatsApp('${c.id}')" title="¡Corte Gratis Alcanzado! Click para enviar WhatsApp">
-          <i class="fa-brands fa-whatsapp"></i> ${pctInt}% (${totalServicios}/${metaCortes}) ¡Corte Gratis!
-        </button>`;
-    } else {
-      badgeFidelidad = `
-        <span class="badge-loyalty-progress">
-          ${pctInt}% (${totalServicios}/${metaCortes})
-        </span>`;
-    }
-
-    return `
-      <tr>
-        <td><strong>${c.nombre}</strong></td>
-        <td>${c.telefono}</td>
-        <td>${c.nacimiento || 'N/A'}</td>
-        <td>${c.fechaCreacion || 'N/A'}</td>
-        <td>${badgeFidelidad}</td>
-        <td>${c.notas || '-'}</td>
-        <td>
-          <button class="btn btn-primary btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="abrirModalCliente('${c.id}')" title="Editar Cliente">
-            <i class="fa-solid fa-pen"></i>
-          </button>
-          <button class="btn btn-danger btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="eliminarCliente('${c.id}')" title="Eliminar Cliente">
-            <i class="fa-solid fa-trash"></i>
-          </button>
-        </td>
-      </tr>
-    `;
-  }).join('');
-}
-
-function enviarSmsGratisWhatsApp(clienteId) {
-  const cli = appData.clientes.find(c => c.id === clienteId);
-  if (!cli) return;
-
-  const numLimpio = cli.telefono.replace(/\D/g, '');
-  const mensaje = `¡Hola ${cli.nombre}! 🎉 En Leguend Barber Studio queremos premiar tu preferencia. Has completado tus 10 servicios acumulados y ¡ya tienes un CORTE TOTALMENTE GRATIS! ✂️🔥 Visítanos en tu sucursal más cercana para reclamar tu premio.`;
-  const urlWs = `https://wa.me/${numLimpio}?text=${encodeURIComponent(mensaje)}`;
-
-  window.open(urlWs, '_blank');
-}
-
-function eliminarCliente(id) {
-  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-  if (confirm('¿Estás seguro de eliminar este cliente?')) {
-    appData.clientes = appData.clientes.filter(c => c.id !== id);
-    guardarDatos();
-    renderizarClientes();
-  }
-}
-
-// EXPORTAR CLIENTES A EXCEL (SIN EMAIL)
-function exportarClientesExcel() {
-  if (!appData.clientes || appData.clientes.length === 0) {
-    alert('No hay clientes registrados para exportar.');
-    return;
-  }
-
-  let csvContent = "\uFEFF";
-  csvContent += "Nombre;Teléfono;Fecha de Nacimiento;Fecha de Creación;Servicios Realizados;Notas\n";
-
-  appData.clientes.forEach(c => {
-    const totalServ = calcularServiciosCliente(c.id);
-    const nombre = `"${(c.nombre || '').replace(/"/g, '""')}"`;
-    const telefono = `"${(c.telefono || '').replace(/"/g, '""')}"`;
-    const nacimiento = `"${(c.nacimiento || 'N/A').replace(/"/g, '""')}"`;
-    const fechaCreacion = `"${(c.fechaCreacion || 'N/A').replace(/"/g, '""')}"`;
-    const notas = `"${(c.notas || '-').replace(/"/g, '""')}"`;
-
-    csvContent += `${nombre};${telefono};${nacimiento};${fechaCreacion};${totalServ};${notas}\n`;
-  });
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  
-  const fechaHoy = new Date().toISOString().split('T')[0];
-  link.setAttribute('href', url);
-  link.setAttribute('download', `Clientes_Peluqueria_${fechaHoy}.csv`);
-  document.body.appendChild(link);
-  
-  link.click();
-  document.body.removeChild(link);
-}
-
-function exportarVentasExcel() {
-  const ventasSucursal = appData.ventas.filter(v => v.sucursalId === appData.sucursalActiva);
-  if (!ventasSucursal || ventasSucursal.length === 0) {
-    alert('No hay ventas registradas en esta sucursal para exportar.');
-    return;
-  }
-
-  let csvContent = "\uFEFF";
-  csvContent += "Fecha;Cliente;Estilista;Método de Pago;Total ($)\n";
-
-  ventasSucursal.forEach(v => {
-    const cliente = appData.clientes.find(c => c.id === v.clienteId)?.nombre || 'Cliente Ocasional';
-    const estilista = appData.estilistas.find(e => e.id === v.estilistaId)?.nombre || 'Sin Asignar';
-    const fecha = `"${(v.fecha || '').replace(/"/g, '""')}"`;
-    const cliNombre = `"${cliente.replace(/"/g, '""')}"`;
-    const estNombre = `"${estilista.replace(/"/g, '""')}"`;
-    const metodoPago = `"${(v.metodoPago || '').replace(/"/g, '""')}"`;
-    const total = v.total.toFixed(2);
-
-    csvContent += `${fecha};${cliNombre};${estNombre};${metodoPago};${total}\n`;
-  });
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  
-  const sucursalActual = appData.sucursales.find(s => s.id === appData.sucursalActiva)?.nombre || 'Sucursal';
-  const fechaHoy = new Date().toISOString().split('T')[0];
-  link.setAttribute('href', url);
-  link.setAttribute('download', `Ventas_${sucursalActual.replace(/\s+/g, '_')}_${fechaHoy}.csv`);
-  document.body.appendChild(link);
-  
-  link.click();
-  document.body.removeChild(link);
-}
-
-// MODALES & AUXILIARES
-function abrirModal(id) { document.getElementById(id).classList.add('active'); }
-function cerrarModal(id) { document.getElementById(id).classList.remove('active'); }
-
-function abrirModalProducto(id = null) {
-  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-  const titulo = document.getElementById('modalProductoTitulo');
-  if (id) {
-    titulo.innerText = 'Editar Producto';
-    const prod = appData.productos.find(p => p.id === id);
-    if (prod) {
-      document.getElementById('prodId').value = prod.id;
-      document.getElementById('prodNombre').value = prod.nombre;
-      document.getElementById('prodCategoria').value = prod.categoria;
-      document.getElementById('prodPrecio').value = prod.precio;
-      document.getElementById('prodStock').value = prod.stock;
-    }
-  } else {
-    titulo.innerText = 'Agregar Producto';
-    document.getElementById('formProducto').reset();
-    document.getElementById('prodId').value = '';
-  }
-  abrirModal('modalProducto');
-}
-
-function abrirModalServicio(id = null) {
-  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-  const titulo = document.getElementById('modalServicioTitulo');
-  if (id) {
-    titulo.innerText = 'Editar Servicio';
-    const serv = appData.servicios.find(s => s.id === id);
-    if (serv) {
-      document.getElementById('servId').value = serv.id;
-      document.getElementById('servNombre').value = serv.nombre;
-      document.getElementById('servPrecio').value = serv.precio;
-    }
-  } else {
-    titulo.innerText = 'Agregar Servicio';
-    document.getElementById('formServicio').reset();
-    document.getElementById('servId').value = '';
-  }
-  abrirModal('modalServicio');
-}
-
-function abrirModalCliente(id = null) {
-  if (id && !esSuperAdmin) return alert('Requiere permisos de Super Admin para editar clientes');
-
-  const titulo = document.getElementById('modalClienteTitulo');
-  if (id) {
-    titulo.innerText = 'Editar Cliente';
-    const cli = appData.clientes.find(c => c.id === id);
-    if (cli) {
-      document.getElementById('cliId').value = cli.id;
-      document.getElementById('cliNombre').value = cli.nombre;
-      document.getElementById('cliTelefono').value = cli.telefono;
-      document.getElementById('cliNacimiento').value = cli.nacimiento || '';
-      document.getElementById('cliNotas').value = cli.notas || '';
-    }
-  } else {
-    titulo.innerText = 'Registrar Cliente';
-    document.getElementById('formCliente').reset();
-    document.getElementById('cliId').value = '';
-  }
-  abrirModal('modalCliente');
-}
-
-function abrirModalSucursal() {
-  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-  abrirModal('modalSucursal');
-}
-
-function poblarSelects() {
-  const posCli = document.getElementById('posCliente');
-  const posEst = document.getElementById('posEstilista');
-
-  const estilistasSucursal = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva);
-
-  const cliOpt = appData.clientes.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
-  const estOpt = estilistasSucursal.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
-
-  if (posCli) posCli.innerHTML = `<option value="">Cliente Ocasional</option>` + cliOpt;
-  if (posEst) posEst.innerHTML = `<option value="">Sin Asignar</option>` + estOpt;
-}
-
-function guardarProducto(e) {
+async function guardarProducto(e) {
   e.preventDefault();
   if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-
   const id = document.getElementById('prodId').value;
   const nombre = document.getElementById('prodNombre').value;
   const categoria = document.getElementById('prodCategoria').value;
@@ -1314,101 +916,304 @@ function guardarProducto(e) {
   const stock = parseInt(document.getElementById('prodStock').value);
 
   if (id) {
-    const prod = appData.productos.find(p => p.id === id);
-    if (prod) {
-      prod.nombre = nombre;
-      prod.categoria = categoria;
-      prod.precio = precio;
-      prod.stock = stock;
-    }
+    await supabaseClient.from('productos').update({ nombre, categoria, precio, stock }).eq('id', id);
+    const idx = appData.productos.findIndex(x => x.id === id);
+    if (idx !== -1) appData.productos[idx] = { ...appData.productos[idx], nombre, categoria, precio, stock };
   } else {
-    const nuevo = {
-      id: 'p_' + Date.now(),
-      sucursalId: appData.sucursalActiva,
-      nombre,
-      categoria,
-      precio,
-      stock,
-      fechaCreacion: new Date().toISOString().split('T')[0],
-      tipo: 'producto'
-    };
-    appData.productos.push(nuevo);
+    const nuevo = { id: 'p_' + Date.now(), sucursal_id: appData.sucursalActiva, nombre, categoria, precio, stock, tipo: 'producto' };
+    await supabaseClient.from('productos').insert([nuevo]);
+    appData.productos.push({ ...nuevo, sucursalId: nuevo.sucursal_id });
   }
-
-  guardarDatos();
   cerrarModal('modalProducto');
   renderizarInventario();
 }
 
-function guardarServicio(e) {
+async function eliminarProducto(id) {
+  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
+  const prod = appData.productos.find(p => p.id === id);
+  if (!prod) return;
+
+  if (confirm(`¿Estás seguro de eliminar el producto "${prod.nombre}"?`)) {
+    const { error } = await supabaseClient.from('productos').delete().eq('id', id);
+    if (error) {
+      alert('Error al eliminar el producto: ' + error.message);
+      return;
+    }
+    appData.productos = appData.productos.filter(p => p.id !== id);
+    renderizarInventario();
+  }
+}
+
+function renderizarServiciosInventario() {
+  const tbody = document.getElementById('listaServiciosInventario');
+  if (!tbody) return;
+  tbody.innerHTML = appData.servicios.map(s => `
+    <tr>
+      <td>${s.nombre}</td>
+      <td>$${s.precio.toFixed(2)}</td>
+      <td>${s.usosCount || 0} usos</td>
+      <td>
+        <div style="display: flex; gap: 0.4rem;">
+          <button class="btn btn-primary btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="abrirModalServicio('${s.id}')" title="Editar Servicio">
+            <i class="fa-solid fa-pen"></i>
+          </button>
+          <button class="btn btn-danger btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="eliminarServicio('${s.id}')" title="Eliminar Servicio">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function guardarServicio(e) {
   e.preventDefault();
   if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
-
   const id = document.getElementById('servId').value;
   const nombre = document.getElementById('servNombre').value;
   const precio = parseFloat(document.getElementById('servPrecio').value);
 
   if (id) {
-    const serv = appData.servicios.find(s => s.id === id);
-    if (serv) {
-      serv.nombre = nombre;
-      serv.precio = precio;
-    }
+    await supabaseClient.from('servicios').update({ nombre, precio }).eq('id', id);
+    const idx = appData.servicios.findIndex(x => x.id === id);
+    if (idx !== -1) appData.servicios[idx] = { ...appData.servicios[idx], nombre, precio };
   } else {
-    const nuevo = {
-      id: 's_' + Date.now(),
-      nombre,
-      precio,
-      fechaCreacion: new Date().toISOString().split('T')[0],
-      usosCount: 0,
-      tipo: 'servicio'
-    };
+    const nuevo = { id: 's_' + Date.now(), nombre, precio, tipo: 'servicio' };
+    await supabaseClient.from('servicios').insert([nuevo]);
     appData.servicios.push(nuevo);
   }
-
-  guardarDatos();
   cerrarModal('modalServicio');
   renderizarServiciosInventario();
-  renderizarPOS();
 }
 
-function guardarCliente(e) {
-  e.preventDefault();
+async function eliminarServicio(id) {
+  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
+  const serv = appData.servicios.find(s => s.id === id);
+  if (!serv) return;
 
-  const id = document.getElementById('cliId').value;
-  if (id && !esSuperAdmin) {
-    return alert('Requiere permisos de Super Admin para modificar información de un cliente existente.');
+  if (confirm(`¿Estás seguro de eliminar el servicio "${serv.nombre}"?`)) {
+    const { error } = await supabaseClient.from('servicios').delete().eq('id', id);
+    if (error) {
+      alert('Error al eliminar el servicio: ' + error.message);
+      return;
+    }
+    appData.servicios = appData.servicios.filter(s => s.id !== id);
+    renderizarServiciosInventario();
   }
+}
 
+// ==========================================
+// CLIENTES
+// ==========================================
+
+function renderizarClientes() {
+  const tbody = document.getElementById('listaClientes');
+  if (!tbody) return;
+  const busq = document.getElementById('buscarCliente').value.toLowerCase();
+  
+  tbody.innerHTML = appData.clientes
+    .filter(c => c.nombre.toLowerCase().includes(busq) || (c.telefono && c.telefono.includes(busq)))
+    .map(c => {
+      const acumulados = Math.min(META_SERVICIOS_GRATIS, c.serviciosAcumulados || 0);
+      const porcentaje = Math.round((acumulados / META_SERVICIOS_GRATIS) * 100);
+      const completo = acumulados >= META_SERVICIOS_GRATIS;
+
+      const barraColor = completo ? '#25d366' : (porcentaje >= 50 ? 'var(--amber)' : 'var(--accent)');
+
+      const celdaFidelidad = `
+        <div class="stock-container" style="min-width: 170px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span class="stock-num" style="color: ${completo ? '#25d366' : 'var(--text-primary)'};">
+              ${porcentaje}% (${acumulados}/${META_SERVICIOS_GRATIS})
+            </span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width: ${porcentaje}%; background-color: ${barraColor};"></div>
+          </div>
+          ${completo ? `
+            <div style="display: flex; gap: 0.4rem; margin-top: 6px; flex-wrap: wrap;">
+              <button class="btn-loyalty-green" onclick="enviarWhatsAppCorteGratis('${c.id}')" title="Enviar aviso de Corte Gratis por WhatsApp">
+                <i class="fa-brands fa-whatsapp"></i> ¡Corte Gratis!
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="canjearCorteGratis('${c.id}')" title="Marcar premio como canjeado y reiniciar a 0%">
+                <i class="fa-solid fa-rotate-left"></i> Canjear
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      return `
+        <tr>
+          <td><strong>${c.nombre}</strong></td>
+          <td>${c.telefono}</td>
+          <td>${celdaFidelidad}</td>
+          <td>${c.nacimiento || 'N/A'}</td>
+          <td>${c.notas || '-'}</td>
+          <td>
+            <div style="display: flex; gap: 0.4rem;">
+              <button class="btn btn-primary btn-sm" onclick="abrirModalCliente('${c.id}')" title="Editar Cliente">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              <button class="btn btn-danger btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="eliminarCliente('${c.id}')" title="Eliminar Cliente">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+}
+
+async function guardarCliente(e) {
+  e.preventDefault();
+  const id = document.getElementById('cliId').value;
   const nombre = document.getElementById('cliNombre').value;
   const telefono = document.getElementById('cliTelefono').value;
+  const serviciosAcumulados = Math.min(META_SERVICIOS_GRATIS, Math.max(0, parseInt(document.getElementById('cliServiciosAcumulados').value || '0', 10)));
   const nacimiento = document.getElementById('cliNacimiento').value;
   const notas = document.getElementById('cliNotas').value;
 
   if (id) {
-    const cli = appData.clientes.find(c => c.id === id);
-    if (cli) {
-      cli.nombre = nombre;
-      cli.telefono = telefono;
-      cli.nacimiento = nacimiento;
-      cli.notas = notas;
-    }
+    localStorage.setItem(`fidelidad_${id}`, serviciosAcumulados.toString());
+    await supabaseClient.from('clientes').update({ nombre, telefono, nacimiento, notas, servicios_acumulados: serviciosAcumulados }).eq('id', id);
+    const idx = appData.clientes.findIndex(c => c.id === id);
+    if (idx !== -1) appData.clientes[idx] = { ...appData.clientes[idx], nombre, telefono, nacimiento, notas, serviciosAcumulados };
   } else {
-    const nuevo = {
-      id: 'c_' + Date.now(),
-      nombre,
-      telefono,
-      nacimiento,
-      fechaCreacion: new Date().toISOString().split('T')[0],
-      notas
-    };
-    appData.clientes.push(nuevo);
+    const nuevoId = 'c_' + Date.now();
+    localStorage.setItem(`fidelidad_${nuevoId}`, serviciosAcumulados.toString());
+    const nuevo = { id: nuevoId, nombre, telefono, nacimiento, notas, servicios_acumulados: serviciosAcumulados };
+    await supabaseClient.from('clientes').insert([nuevo]);
+    appData.clientes.push({ ...nuevo, serviciosAcumulados });
   }
-
-  guardarDatos();
   cerrarModal('modalCliente');
   renderizarClientes();
   poblarSelects();
+}
+
+async function eliminarCliente(id) {
+  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
+  const cli = appData.clientes.find(c => c.id === id);
+  if (!cli) return;
+
+  if (confirm(`¿Estás seguro de eliminar al cliente "${cli.nombre}"?`)) {
+    const { error } = await supabaseClient.from('clientes').delete().eq('id', id);
+    if (error) {
+      alert('Error al eliminar el cliente: ' + error.message);
+      return;
+    }
+    localStorage.removeItem(`fidelidad_${id}`);
+    appData.clientes = appData.clientes.filter(c => c.id !== id);
+    renderizarClientes();
+    poblarSelects();
+  }
+}
+
+// ==========================================
+// MODALES Y UTILIDADES
+// ==========================================
+
+function abrirModal(id) { document.getElementById(id).classList.add('active'); }
+function cerrarModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function abrirModalProducto(id = null) {
+  if (!esSuperAdmin) return alert('Requiere permisos');
+  document.getElementById('modalProductoTitulo').innerText = id ? 'Editar Producto' : 'Agregar Producto';
+  if (id) {
+    const p = appData.productos.find(x => x.id === id);
+    document.getElementById('prodId').value = p.id;
+    document.getElementById('prodNombre').value = p.nombre;
+    document.getElementById('prodCategoria').value = p.categoria;
+    document.getElementById('prodPrecio').value = p.precio;
+    document.getElementById('prodStock').value = p.stock;
+  } else {
+    document.getElementById('prodId').value = '';
+    document.getElementById('prodNombre').value = '';
+    document.getElementById('prodCategoria').value = '';
+    document.getElementById('prodPrecio').value = '';
+    document.getElementById('prodStock').value = '';
+  }
+  abrirModal('modalProducto');
+}
+
+function abrirModalServicio(id = null) {
+  if (!esSuperAdmin) return alert('Requiere permisos');
+  document.getElementById('modalServicioTitulo').innerText = id ? 'Editar Servicio' : 'Agregar Servicio';
+  if (id) {
+    const s = appData.servicios.find(x => x.id === id);
+    document.getElementById('servId').value = s.id;
+    document.getElementById('servNombre').value = s.nombre;
+    document.getElementById('servPrecio').value = s.precio;
+  } else {
+    document.getElementById('servId').value = '';
+    document.getElementById('servNombre').value = '';
+    document.getElementById('servPrecio').value = '';
+  }
+  abrirModal('modalServicio');
+}
+
+function abrirModalCliente(id = null) {
+  document.getElementById('modalClienteTitulo').innerText = id ? 'Editar Cliente' : 'Registrar Cliente';
+  if (id) {
+    const c = appData.clientes.find(x => x.id === id);
+    document.getElementById('cliId').value = c.id;
+    document.getElementById('cliNombre').value = c.nombre;
+    document.getElementById('cliTelefono').value = c.telefono;
+    document.getElementById('cliServiciosAcumulados').value = c.serviciosAcumulados || 0;
+    document.getElementById('cliNacimiento').value = c.nacimiento || '';
+    document.getElementById('cliNotas').value = c.notas || '';
+  } else {
+    document.getElementById('cliId').value = '';
+    document.getElementById('cliNombre').value = '';
+    document.getElementById('cliTelefono').value = '';
+    document.getElementById('cliServiciosAcumulados').value = '0';
+    document.getElementById('cliNacimiento').value = '';
+    document.getElementById('cliNotas').value = '';
+  }
+  abrirModal('modalCliente');
+}
+
+function abrirModalEstilista(id = null) {
+  if (!esSuperAdmin) return alert('Requiere permisos');
+  document.getElementById('modalEstilistaTitulo').innerText = id ? 'Editar Estilista' : 'Registrar Estilista';
+  if (id) {
+    const e = appData.estilistas.find(x => x.id === id);
+    document.getElementById('estilistaId').value = e.id;
+    document.getElementById('estilistaNombre').value = e.nombre;
+    document.getElementById('estilistaCedula').value = e.cedula;
+    document.getElementById('estilistaNacimiento').value = e.nacimiento;
+  } else {
+    document.getElementById('estilistaId').value = '';
+    document.getElementById('estilistaNombre').value = '';
+    document.getElementById('estilistaCedula').value = '';
+    document.getElementById('estilistaNacimiento').value = '';
+  }
+  abrirModal('modalEstilista');
+}
+
+function abrirModalSucursal() {
+  if (!esSuperAdmin) return alert('Requiere permisos');
+  abrirModal('modalSucursal');
+}
+
+function poblarSelects() {
+  const posCli = document.getElementById('posCliente');
+  const posEst = document.getElementById('posEstilista');
+  const estSuc = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva);
+
+  if (posCli) {
+    posCli.innerHTML = `<option value="">Cliente Ocasional (Sin WhatsApp)</option>` + 
+      appData.clientes.map(c => {
+        const acum = c.serviciosAcumulados || 0;
+        const pct = Math.round((acum / META_SERVICIOS_GRATIS) * 100);
+        const tag = acum >= META_SERVICIOS_GRATIS ? '🎁 ¡CORTE GRATIS!' : `${pct}% (${acum}/8)`;
+        return `<option value="${c.id}">${c.nombre} (${c.telefono || 'S/N'}) - [${tag}]</option>`;
+      }).join('');
+  }
+  if (posEst) {
+    posEst.innerHTML = `<option value="">Sin Asignar</option>` + 
+      estSuc.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
+  }
 }
 
 function setupTema() {
