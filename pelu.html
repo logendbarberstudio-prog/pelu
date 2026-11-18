@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
   <title>Sistema de Gestión Multi-Sucursal - Peluquería & Barbería</title>
   <link rel="stylesheet" href="style.css">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -79,7 +79,7 @@
     <!-- Área de Contenido Principal -->
     <main class="main-content">
       <header class="top-header">
-        <button class="mobile-toggle-btn" id="mobileMenuBtn" onclick="abrirMenuMovil()">
+        <button class="mobile-toggle-btn" id="mobileMenuBtn">
           <i class="fa-solid fa-bars"></i>
         </button>
         <div class="header-title">
@@ -162,9 +162,6 @@
         <!-- MODULO: ESTILISTAS -->
         <section id="mod-estilistas" class="module">
           <div class="toolbar-card" style="justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap;">
-            <button class="btn btn-success" onclick="exportarEstilistasExcel()">
-              <i class="fa-solid fa-file-excel"></i> Exportar a Excel
-            </button>
             <button class="btn btn-primary admin-only" onclick="abrirModalEstilista()">
               <i class="fa-solid fa-user-plus"></i> Nuevo Estilista
             </button>
@@ -375,21 +372,6 @@
         </section>
       </div>
     </main>
-  </div>
-
-  <!-- MODAL: AVISO DE COMPRA -->
-  <div class="modal" id="modalAvisoCompra">
-    <div class="modal-content">
-      <div class="modal-header" style="border-bottom: 1px solid var(--danger);">
-        <h3 style="color: var(--danger);"><i class="fa-solid fa-cart-shopping"></i> ¡Aviso de Compra!</h3>
-        <button class="close-btn" onclick="cerrarModal('modalAvisoCompra')">&times;</button>
-      </div>
-      <div style="margin: 1rem 0;">
-        <p>Productos con 5 o menos unidades en inventario:</p>
-        <ul id="listaAvisoCompraProductos" style="list-style: none; padding: 0;"></ul>
-      </div>
-      <div class="modal-footer"><button class="btn btn-secondary" onclick="cerrarModal('modalAvisoCompra')">Entendido</button></div>
-    </div>
   </div>
 
   <!-- MODAL: LOGIN SUPER ADMIN -->

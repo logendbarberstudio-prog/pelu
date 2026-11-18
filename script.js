@@ -17,7 +17,7 @@ let appData = {
 };
 
 let esSuperAdmin = false;
-const META_SERVICIOS_GRATIS = 8; // Meta de 8 servicios para corte gratis
+const META_SERVICIOS_GRATIS = 8;
 
 async function cargarDatosDesdeSupabase() {
   try {
@@ -119,6 +119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderizarModulo('pos');
 });
 
+// Configuración robusta del menú móvil
 function setupNavegacion() {
   const navBtns = document.querySelectorAll('.nav-btn');
   navBtns.forEach(btn => {
@@ -133,19 +134,31 @@ function setupNavegacion() {
     });
   });
 
-  document.getElementById('mobileMenuBtn').addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('open');
-  });
+  const mobileBtn = document.getElementById('mobileMenuBtn');
+  if (mobileBtn) {
+    mobileBtn.replaceWith(mobileBtn.cloneNode(true));
+    document.getElementById('mobileMenuBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebarOverlay');
+      if (sidebar) sidebar.classList.toggle('open');
+      if (overlay) overlay.classList.toggle('active');
+    });
+  }
 }
 
 function abrirMenuMovil() {
-  document.getElementById('sidebar').classList.add('open');
-  document.getElementById('sidebarOverlay').classList.add('active');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  if (sidebar) sidebar.classList.add('open');
+  if (overlay) overlay.classList.add('active');
 }
 
 function cerrarMenuMovil() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('sidebarOverlay').classList.remove('active');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  if (sidebar) sidebar.classList.remove('open');
+  if (overlay) overlay.classList.remove('active');
 }
 
 function activarPestana(btn, targetTab) {
@@ -320,10 +333,6 @@ function cambiarSubmodSuperAdmin(tab, btn) {
   if (tab === 'reportes') actualizarGraficosSuperAdmin();
 }
 
-// ==========================================
-// CONTROL GLOBAL Y RECOLECCIÓN POR SUCURSAL
-// ==========================================
-
 function poblarFiltroReportesSucursal() {
   const select = document.getElementById('filtroReporteSucursal');
   if (!select) return;
@@ -335,11 +344,9 @@ function renderizarSuperAdmin() {
   const container = document.getElementById('superAdminContainer');
   if (!container) return;
 
-  // Ganancias totales de toda la cadena
   let totalCadena = appData.ventas.reduce((sum, v) => sum + v.total, 0);
   document.getElementById('gananciasTotalesCadena').innerText = `$${totalCadena.toFixed(2)}`;
 
-  // Desglose detallado por cada sucursal
   container.innerHTML = appData.sucursales.map(s => {
     const ventasSuc = appData.ventas.filter(v => v.sucursalId === s.id);
     const totalSucursal = ventasSuc.reduce((sum, v) => sum + v.total, 0);
@@ -438,7 +445,6 @@ function actualizarGraficosSuperAdmin() {
   const fechaFin = document.getElementById('reporteFechaFin').value;
   const filtroSucursal = document.getElementById('filtroReporteSucursal')?.value || 'todas';
 
-  // Filtrar ventas según sucursal y rango de fechas opcional
   let ventasFiltradas = [...appData.ventas];
   if (filtroSucursal !== 'todas') {
     ventasFiltradas = ventasFiltradas.filter(v => v.sucursalId === filtroSucursal);
@@ -454,7 +460,6 @@ function actualizarGraficosSuperAdmin() {
   if (window.repChart2) window.repChart2.destroy();
   if (window.repChart3) window.repChart3.destroy();
 
-  // 1. Gráfico de Servicios Más Solicitados
   window.repChart1 = new Chart(document.getElementById('chartServiciosPopulares').getContext('2d'), {
     type: 'pie',
     data: { 
@@ -467,7 +472,6 @@ function actualizarGraficosSuperAdmin() {
     options: { responsive: true, maintainAspectRatio: false }
   });
 
-  // 2. Gráfico de Ventas por Estilista (Recogiendo datos reales de las ventas filtradas)
   const estilistasSucursal = filtroSucursal === 'todas' 
     ? appData.estilistas 
     : appData.estilistas.filter(e => e.sucursalId === filtroSucursal);
@@ -491,7 +495,6 @@ function actualizarGraficosSuperAdmin() {
     options: { responsive: true, maintainAspectRatio: false }
   });
 
-  // 3. Gráfico de Rendimiento de Ventas por Fecha
   const ventasPorFecha = {};
   ventasFiltradas.forEach(v => {
     ventasPorFecha[v.fecha] = (ventasPorFecha[v.fecha] || 0) + v.total;
@@ -516,10 +519,6 @@ function actualizarGraficosSuperAdmin() {
     options: { responsive: true, maintainAspectRatio: false }
   });
 }
-
-// ==========================================
-// MÓDULO POS, WHATSAPP Y FIDELIDAD
-// ==========================================
 
 function renderizarPOS() {
   const grid = document.getElementById('posCatalogGrid');
@@ -808,10 +807,6 @@ function reimprimirTicket(id) {
   if (v) mostrarTicket(v);
 }
 
-// ==========================================
-// ESTILISTAS
-// ==========================================
-
 function renderizarEstilistas() {
   const container = document.getElementById('listaEstilistas');
   if (!container) return;
@@ -870,10 +865,6 @@ async function eliminarEstilista(id) {
     poblarSelects();
   }
 }
-
-// ==========================================
-// INVENTARIO & SERVICIOS
-// ==========================================
 
 function cambiarTabInventario(tab, btn) {
   document.querySelectorAll('#mod-inventario .tab-link').forEach(b => b.classList.remove('active'));
@@ -1002,10 +993,6 @@ async function eliminarServicio(id) {
   }
 }
 
-// ==========================================
-// CLIENTES
-// ==========================================
-
 function renderizarClientes() {
   const tbody = document.getElementById('listaClientes');
   if (!tbody) return;
@@ -1108,10 +1095,6 @@ async function eliminarCliente(id) {
     poblarSelects();
   }
 }
-
-// ==========================================
-// MODALES Y UTILIDADES
-// ==========================================
 
 function abrirModal(id) { document.getElementById(id).classList.add('active'); }
 function cerrarModal(id) { document.getElementById(id).classList.remove('active'); }

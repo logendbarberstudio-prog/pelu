@@ -29,6 +29,7 @@ body.light-mode {
   margin: 0;
   padding: 0;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html, body {
@@ -54,7 +55,6 @@ body.light-mode {
   background-image: linear-gradient(rgba(241, 245, 249, 0.92), rgba(241, 245, 249, 0.92)), url('logo.jpg');
 }
 
-/* Fondo Animado de Líneas */
 .lines {
   position: fixed;
   top: 0; left: 0; right: 0; height: 100%;
@@ -92,6 +92,7 @@ body.light-mode {
   display: flex;
   min-height: 100vh;
   width: 100%;
+  position: relative;
 }
 
 /* Sidebar Adaptable */
@@ -141,6 +142,7 @@ body.light-mode {
   color: var(--text-primary);
   font-size: 1.25rem;
   cursor: pointer;
+  padding: 0.5rem;
 }
 
 .branch-selector-container {
@@ -171,13 +173,14 @@ body.light-mode {
   padding: 1rem;
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .nav-btn {
   display: flex;
   align-items: center;
   gap: 0.85rem;
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
   background: transparent;
   border: none;
   color: var(--text-secondary);
@@ -214,12 +217,11 @@ body.light-mode {
   gap: 0.5rem;
 }
 
-/* Overlay para móvil */
 .sidebar-overlay {
   display: none;
   position: fixed;
   top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(2px);
   z-index: 99;
 }
@@ -231,7 +233,7 @@ body.light-mode {
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-width: 0; /* Evita desbordamiento horizontal */
+  min-width: 0;
 }
 
 .top-header {
@@ -252,6 +254,7 @@ body.light-mode {
   color: var(--text-primary);
   font-size: 1.5rem;
   cursor: pointer;
+  padding: 0.25rem;
 }
 
 .header-title h1 {
@@ -381,18 +384,6 @@ body.light-mode {
   transition: width 0.3s ease;
 }
 
-/* Badges Fidelidad Clientes */
-.badge-loyalty-progress {
-  display: inline-block;
-  padding: 0.25rem 0.65rem;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
 .btn-loyalty-green {
   display: inline-flex;
   align-items: center;
@@ -432,6 +423,7 @@ body.light-mode {
   justify-content: center;
   gap: 0.5rem;
   font-size: 0.9rem;
+  min-height: 40px;
 }
 
 .btn:hover { opacity: 0.9; }
@@ -443,13 +435,13 @@ body.light-mode {
 
 .form-control {
   width: 100%;
-  padding: 0.6rem 0.8rem;
+  padding: 0.65rem 0.8rem;
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   color: var(--text-primary);
   outline: none;
-  font-size: 0.95rem;
+  font-size: 1rem;
 }
 
 .form-group { margin-bottom: 1rem; }
@@ -473,7 +465,7 @@ body.light-mode {
   flex-wrap: wrap;
 }
 
-.filter-group { display: flex; gap: 1rem; flex-wrap: wrap; }
+.filter-group { display: flex; gap: 1rem; flex-wrap: wrap; flex: 1; }
 
 .admin-only {
   display: none !important;
@@ -483,7 +475,6 @@ body.light-mode {
   display: inline-flex !important;
 }
 
-/* POS Layout Adaptable Tablets y Móviles */
 .pos-layout {
   display: grid;
   grid-template-columns: 1.6fr 1fr;
@@ -492,13 +483,14 @@ body.light-mode {
 
 .pos-tabs { display: flex; gap: 0.5rem; margin: 1rem 0; flex-wrap: wrap; }
 .tab-link {
-  padding: 0.5rem 1rem;
+  padding: 0.6rem 1rem;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.85rem;
+  min-height: 38px;
 }
 .tab-link.active { background: var(--accent); color: #fff; }
 
@@ -509,16 +501,22 @@ body.light-mode {
   max-height: 550px;
   overflow-y: auto;
   padding-right: 4px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .pos-item-card {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  padding: 0.85rem;
+  padding: 1rem 0.85rem;
   border-radius: 8px;
   cursor: pointer;
   text-align: center;
   transition: transform 0.1s ease;
+  min-height: 90px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
 .pos-item-card:active {
   transform: scale(0.97);
@@ -532,13 +530,14 @@ body.light-mode {
   border-radius: 8px;
   padding: 0.5rem;
   margin-bottom: 1rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 .cart-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.4rem 0;
+  padding: 0.5rem 0;
   border-bottom: 1px solid var(--border-color);
   gap: 0.5rem;
 }
@@ -569,12 +568,13 @@ body.light-mode {
   display: none;
   position: fixed;
   top: 0; left: 0; width: 100%; height: 100%;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
   justify-content: center;
   align-items: center;
   z-index: 1000;
   padding: 1rem;
+  overflow-y: auto;
 }
 .modal.active { display: flex; }
 
@@ -588,8 +588,10 @@ body.light-mode {
   border: 1px solid var(--border-color);
   max-height: 90vh;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: auto;
 }
-.modal-sm { max-width: 360px; }
+.modal-sm { max-width: 380px; }
 
 .modal-header {
   display: flex;
@@ -604,6 +606,7 @@ body.light-mode {
   color: var(--text-primary);
   font-size: 1.5rem;
   cursor: pointer;
+  padding: 0.25rem;
 }
 
 .modal-footer {
@@ -620,7 +623,6 @@ body.light-mode {
   gap: 1.25rem;
 }
 
-/* RESPONSIVE MEDIA QUERIES PARA TABLETS Y MÓVILES */
 @media (max-width: 1024px) {
   .pos-layout {
     grid-template-columns: 1fr;
@@ -633,7 +635,7 @@ body.light-mode {
     top: 0; left: -280px;
     height: 100%;
     width: 280px;
-    box-shadow: 5px 0 15px rgba(0,0,0,0.3);
+    box-shadow: 5px 0 25px rgba(0,0,0,0.5);
   }
   .sidebar.open {
     left: 0;
@@ -655,5 +657,8 @@ body.light-mode {
   }
   .hide-xs {
     display: none !important;
+  }
+  .kpi-grid {
+    grid-template-columns: 1fr;
   }
 }
