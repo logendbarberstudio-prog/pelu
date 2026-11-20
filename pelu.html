@@ -9,6 +9,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- SDK de Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Librería SheetJS para exportar a Excel (.xlsx) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body class="dark-mode">
   <div class="lines">
@@ -162,6 +164,9 @@
         <!-- MODULO: ESTILISTAS -->
         <section id="mod-estilistas" class="module">
           <div class="toolbar-card" style="justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-excel" onclick="exportarExcelEstilistas()">
+              <i class="fa-solid fa-file-excel"></i> Exportar Excel
+            </button>
             <button class="btn btn-primary admin-only" onclick="abrirModalEstilista()">
               <i class="fa-solid fa-user-plus"></i> Nuevo Estilista
             </button>
@@ -177,7 +182,10 @@
           </div>
 
           <div id="submod-productos" class="sub-module">
-            <div class="toolbar-card text-right">
+            <div class="toolbar-card" style="justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap;">
+              <button class="btn btn-excel" onclick="exportarExcelInventario()">
+                <i class="fa-solid fa-file-excel"></i> Exportar Inventario Excel
+              </button>
               <button class="btn btn-primary admin-only" onclick="abrirModalProducto()">
                 <i class="fa-solid fa-box-archive"></i> Agregar Producto
               </button>
@@ -201,7 +209,10 @@
           </div>
 
           <div id="submod-servicios" class="sub-module" style="display: none;">
-            <div class="toolbar-card text-right">
+            <div class="toolbar-card" style="justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap;">
+              <button class="btn btn-excel" onclick="exportarExcelServicios()">
+                <i class="fa-solid fa-file-excel"></i> Exportar Servicios Excel
+              </button>
               <button class="btn btn-primary admin-only" onclick="abrirModalServicio()">
                 <i class="fa-solid fa-scissors"></i> Agregar Servicio
               </button>
@@ -231,6 +242,9 @@
               <input type="text" id="buscarCliente" class="form-control" placeholder="Buscar por nombre o teléfono..." onkeyup="renderizarClientes()">
             </div>
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button class="btn btn-excel" onclick="exportarExcelClientes()">
+                <i class="fa-solid fa-file-excel"></i> Exportar Excel
+              </button>
               <button class="btn btn-primary" onclick="abrirModalCliente()">
                 <i class="fa-solid fa-person-plus"></i> Nuevo Cliente
               </button>
@@ -268,15 +282,44 @@
               <button class="tab-link" onclick="cambiarSubmodSuperAdmin('reportes', this)">
                 <i class="fa-solid fa-chart-line"></i> Reportes & Estadísticas
               </button>
+              <button class="tab-link" onclick="cambiarSubmodSuperAdmin('estilistas_admin', this)">
+                <i class="fa-solid fa-user-ninja"></i> Estilistas
+              </button>
             </div>
-            <button class="btn btn-danger btn-sm" onclick="cerrarSesionSuperAdmin()">
-              <i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión Super Admin
-            </button>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button class="btn btn-excel btn-sm" onclick="exportarExcelSuperAdmin()">
+                <i class="fa-solid fa-file-excel"></i> Exportar Todo a Excel
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="cerrarSesionSuperAdmin()">
+                <i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión Super Admin
+              </button>
+            </div>
           </div>
 
+          <!-- SUBMODULO: CONTROL POR SUCURSALES -->
           <div id="submod-superadmin-global">
             <div class="card" style="margin-bottom: 1.5rem;">
-              <h3><i class="fa-solid fa-user-shield"></i> Panel Super Admin - Vista Global por Sucursales</h3>
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                  <h3><i class="fa-solid fa-user-shield"></i> Panel Super Admin - Vista Global por Sucursales</h3>
+                </div>
+                <div style="display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap;">
+                  <div>
+                    <label style="font-size: 0.75rem; color: var(--text-secondary);">Desde:</label>
+                    <input type="date" id="globalFechaInicio" class="form-control" onchange="renderizarSuperAdmin()">
+                  </div>
+                  <div>
+                    <label style="font-size: 0.75rem; color: var(--text-secondary);">Hasta:</label>
+                    <input type="date" id="globalFechaFin" class="form-control" onchange="renderizarSuperAdmin()">
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="limpiarFiltroFechas('global')" title="Mostrar todas las fechas">
+                    <i class="fa-solid fa-rotate-left"></i> Limpiar
+                  </button>
+                  <button type="button" class="btn btn-excel btn-sm" onclick="exportarExcelControlSucursales()" title="Exportar Control por Sucursales a Excel">
+                    <i class="fa-solid fa-file-excel"></i> Excel Sucursales
+                  </button>
+                </div>
+              </div>
             </div>
             <div class="kpi-card" style="margin-bottom: 1.5rem; background: var(--bg-card); border-left: 4px solid var(--emerald);">
               <div class="kpi-icon bg-emerald"><i class="fa-solid fa-vault"></i></div>
@@ -288,12 +331,37 @@
             <div id="superAdminContainer"></div>
           </div>
 
+          <!-- SUBMODULO: DASHBOARD & FACTURACION -->
           <div id="submod-superadmin-dashboard" style="display: none;">
+            <div class="card" style="margin-bottom: 1.5rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                  <h3><i class="fa-solid fa-chart-pie"></i> Dashboard & Facturación por Sucursal</h3>
+                </div>
+                <div style="display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap;">
+                  <div>
+                    <label style="font-size: 0.75rem; color: var(--text-secondary);">Desde:</label>
+                    <input type="date" id="dashFechaInicio" class="form-control" onchange="renderizarDashboard()">
+                  </div>
+                  <div>
+                    <label style="font-size: 0.75rem; color: var(--text-secondary);">Hasta:</label>
+                    <input type="date" id="dashFechaFin" class="form-control" onchange="renderizarDashboard()">
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="limpiarFiltroFechas('dashboard')" title="Mostrar todas las fechas">
+                    <i class="fa-solid fa-rotate-left"></i> Limpiar
+                  </button>
+                  <button type="button" class="btn btn-excel btn-sm" onclick="exportarExcelDashboardFacturacion()" title="Exportar Dashboard y Facturas a Excel">
+                    <i class="fa-solid fa-file-excel"></i> Excel Facturación
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div class="kpi-grid">
               <div class="kpi-card">
                 <div class="kpi-icon bg-emerald"><i class="fa-solid fa-dollar-sign"></i></div>
                 <div class="kpi-info">
-                  <span>Ingresos Hoy (Sucursal Activa)</span>
+                  <span id="dashLabelIngresos">Ingresos (Sucursal Activa)</span>
                   <h3 id="dashIngresos">$0.00</h3>
                 </div>
               </div>
@@ -313,7 +381,7 @@
               </div>
             </div>
             <div class="card">
-              <h3><i class="fa-solid fa-receipt"></i> Historial de Ventas / Facturas Recientes</h3>
+              <h3><i class="fa-solid fa-receipt"></i> Historial de Ventas / Facturas</h3>
               <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                 <table class="data-table">
                   <thead>
@@ -332,13 +400,14 @@
             </div>
           </div>
 
+          <!-- SUBMODULO: REPORTES & ESTADISTICAS -->
           <div id="submod-superadmin-reportes" style="display: none;">
             <div class="card" style="margin-bottom: 1.5rem;">
               <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
                 <div>
                   <h3><i class="fa-solid fa-chart-column"></i> Reportes & Métricas Ejecutivas</h3>
                 </div>
-                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <div style="display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap;">
                   <div>
                     <label style="font-size: 0.75rem; color: var(--text-secondary);">Desde:</label>
                     <input type="date" id="reporteFechaInicio" class="form-control" onchange="actualizarGraficosSuperAdmin()">
@@ -351,6 +420,9 @@
                     <label style="font-size: 0.75rem; color: var(--text-secondary);">Sucursal:</label>
                     <select id="filtroReporteSucursal" class="form-control" onchange="actualizarGraficosSuperAdmin()"></select>
                   </div>
+                  <button type="button" class="btn btn-excel btn-sm" onclick="exportarExcelReportesEstadisticas()" title="Exportar Reportes y Estadísticas a Excel">
+                    <i class="fa-solid fa-file-excel"></i> Excel Reportes
+                  </button>
                 </div>
               </div>
             </div>
@@ -366,6 +438,55 @@
               <div class="card" style="grid-column: 1 / -1;">
                 <h3>Rendimiento de Ventas ($)</h3>
                 <div style="position: relative; height: 260px;"><canvas id="chartIngresosSemanales"></canvas></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SUBMODULO: ESTILISTAS (SUPER ADMIN) -->
+          <div id="submod-superadmin-estilistas_admin" style="display: none;">
+            <div class="card" style="margin-bottom: 1.5rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                  <h3><i class="fa-solid fa-user-ninja"></i> Rendimiento y Control de Estilistas</h3>
+                </div>
+                <div style="display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap;">
+                  <div>
+                    <label style="font-size: 0.75rem; color: var(--text-secondary);">Desde:</label>
+                    <input type="date" id="estAdminFechaInicio" class="form-control" onchange="renderizarEstilistasSuperAdmin()">
+                  </div>
+                  <div>
+                    <label style="font-size: 0.75rem; color: var(--text-secondary);">Hasta:</label>
+                    <input type="date" id="estAdminFechaFin" class="form-control" onchange="renderizarEstilistasSuperAdmin()">
+                  </div>
+                  <div>
+                    <label style="font-size: 0.75rem; color: var(--text-secondary);">Sucursal:</label>
+                    <select id="filtroEstilistasAdminSucursal" class="form-control" onchange="renderizarEstilistasSuperAdmin()"></select>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="limpiarFiltroFechas('estilistas_admin')" title="Mostrar todas las fechas">
+                    <i class="fa-solid fa-rotate-left"></i> Limpiar
+                  </button>
+                  <button type="button" class="btn btn-excel btn-sm" onclick="exportarExcelEstilistasSuperAdmin()" title="Exportar Rendimiento de Estilistas a Excel">
+                    <i class="fa-solid fa-file-excel"></i> Excel Estilistas
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Estilista</th>
+                      <th>Cédula</th>
+                      <th>Sucursal</th>
+                      <th>F. Nacimiento</th>
+                      <th>Atenciones</th>
+                      <th>Ventas Generadas ($)</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tablaEstilistasSuperAdmin"></tbody>
+                </table>
               </div>
             </div>
           </div>

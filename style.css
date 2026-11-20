@@ -430,6 +430,8 @@ body.light-mode {
 .btn-secondary { background-color: var(--border-color); color: var(--text-primary); }
 .btn-success { background-color: var(--emerald); color: #fff; }
 .btn-danger { background-color: var(--danger); color: #fff; }
+.btn-excel { background-color: #16a34a; color: #fff; }
+.btn-excel:hover { background-color: #15803d; }
 .btn-block { width: 100%; }
 
 .form-control {

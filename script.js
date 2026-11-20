@@ -21,7 +21,7 @@ async function cargarDatosDesdeSupabase() {
     if (typeof supabase !== 'undefined') {
       supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } else {
-      console.error("El SDK de Supabase não está cargado.");
+      console.error("El SDK de Supabase no está cargado.");
       return;
     }
 
@@ -288,25 +288,75 @@ function renderizarModulo(modulo) {
   if (modulo === 'clientes') renderizarClientes();
   if (modulo === 'superadmin') { 
     poblarFiltroReportesSucursal();
+    poblarFiltroEstilistasAdminSucursal();
     renderizarSuperAdmin(); 
     renderizarDashboard(); 
     actualizarGraficosSuperAdmin();
+    renderizarEstilistasSuperAdmin();
+  }
+}
+
+function filtrarVentasPorRango(ventas, fechaInicio, fechaFin) {
+  return ventas.filter(v => {
+    if (fechaInicio && v.fecha < fechaInicio) return false;
+    if (fechaFin && v.fecha > fechaFin) return false;
+    return true;
+  });
+}
+
+function limpiarFiltroFechas(seccion) {
+  if (seccion === 'global') {
+    const inicio = document.getElementById('globalFechaInicio');
+    const fin = document.getElementById('globalFechaFin');
+    if (inicio) inicio.value = '';
+    if (fin) fin.value = '';
+    renderizarSuperAdmin();
+  } else if (seccion === 'dashboard') {
+    const inicio = document.getElementById('dashFechaInicio');
+    const fin = document.getElementById('dashFechaFin');
+    if (inicio) inicio.value = '';
+    if (fin) fin.value = '';
+    renderizarDashboard();
+  } else if (seccion === 'estilistas_admin') {
+    const inicio = document.getElementById('estAdminFechaInicio');
+    const fin = document.getElementById('estAdminFechaFin');
+    if (inicio) inicio.value = '';
+    if (fin) fin.value = '';
+    renderizarEstilistasSuperAdmin();
   }
 }
 
 function renderizarDashboard() {
+  const fechaInicio = document.getElementById('dashFechaInicio')?.value || '';
+  const fechaFin = document.getElementById('dashFechaFin')?.value || '';
+  const hayFiltroFecha = Boolean(fechaInicio || fechaFin);
+
+  const ventasSucBase = appData.ventas.filter(v => v.sucursalId === appData.sucursalActiva);
+  const ventasSuc = hayFiltroFecha
+    ? filtrarVentasPorRango(ventasSucBase, fechaInicio, fechaFin)
+    : ventasSucBase;
+
   const hoy = new Date().toISOString().split('T')[0];
-  const ventasSuc = appData.ventas.filter(v => v.sucursalId === appData.sucursalActiva);
-  const ingresosHoy = ventasSuc.filter(v => v.fecha === hoy).reduce((sum, v) => sum + v.total, 0);
-  
-  document.getElementById('dashIngresos').innerText = `$${ingresosHoy.toFixed(2)}`;
+  const labelIngresos = document.getElementById('dashLabelIngresos');
+  let montoIngresos = 0;
+
+  if (hayFiltroFecha) {
+    montoIngresos = ventasSuc.reduce((sum, v) => sum + v.total, 0);
+    if (labelIngresos) labelIngresos.innerText = 'Ingresos Filtrados (Sucursal Activa)';
+  } else {
+    montoIngresos = ventasSucBase.filter(v => v.fecha === hoy).reduce((sum, v) => sum + v.total, 0);
+    if (labelIngresos) labelIngresos.innerText = 'Ingresos Hoy (Sucursal Activa)';
+  }
+
+  document.getElementById('dashIngresos').innerText = `$${montoIngresos.toFixed(2)}`;
   document.getElementById('dashEstilistas').innerText = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva).length;
   document.getElementById('dashStockBajo').innerText = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva && p.stock <= 5).length;
 
   const tbodyVentas = document.getElementById('dashTablaVentas');
   if (tbodyVentas) {
-    tbodyVentas.innerHTML = ventasSuc.length === 0 ? `<tr><td colspan="6" class="text-center">Sin facturas recientes</td></tr>` :
-      ventasSuc.slice(-15).reverse().map(v => `
+    tbodyVentas.innerHTML = ventasSuc.length === 0
+      ? `<tr><td colspan="6" class="text-center">Sin facturas en el rango seleccionado</td></tr>`
+      : ventasSuc.slice().reverse().slice(0, 25).map(v => `
         <tr>
           <td>${v.fecha}</td>
           <td>${appData.clientes.find(c => c.id === v.clienteId)?.nombre || 'Ocasional'}</td>
@@ -325,8 +375,12 @@ function cambiarSubmodSuperAdmin(tab, btn) {
   document.getElementById('submod-superadmin-global').style.display = tab === 'global' ? 'block' : 'none';
   document.getElementById('submod-superadmin-dashboard').style.display = tab === 'dashboard' ? 'block' : 'none';
   document.getElementById('submod-superadmin-reportes').style.display = tab === 'reportes' ? 'block' : 'none';
+  document.getElementById('submod-superadmin-estilistas_admin').style.display = tab === 'estilistas_admin' ? 'block' : 'none';
+
+  if (tab === 'global') renderizarSuperAdmin();
   if (tab === 'dashboard') renderizarDashboard();
   if (tab === 'reportes') actualizarGraficosSuperAdmin();
+  if (tab === 'estilistas_admin') renderizarEstilistasSuperAdmin();
 }
 
 function poblarFiltroReportesSucursal() {
@@ -336,15 +390,72 @@ function poblarFiltroReportesSucursal() {
     appData.sucursales.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
 }
 
+function poblarFiltroEstilistasAdminSucursal() {
+  const select = document.getElementById('filtroEstilistasAdminSucursal');
+  if (!select) return;
+  select.innerHTML = `<option value="todas">🌐 Todas las Sucursales</option>` +
+    appData.sucursales.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
+}
+
+function renderizarEstilistasSuperAdmin() {
+  const tbody = document.getElementById('tablaEstilistasSuperAdmin');
+  if (!tbody) return;
+
+  const fechaInicio = document.getElementById('estAdminFechaInicio')?.value || '';
+  const fechaFin = document.getElementById('estAdminFechaFin')?.value || '';
+  const filtroSucursal = document.getElementById('filtroEstilistasAdminSucursal')?.value || 'todas';
+
+  const ventasFiltradas = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
+  const estilistasFiltrados = filtroSucursal === 'todas'
+    ? appData.estilistas
+    : appData.estilistas.filter(e => e.sucursalId === filtroSucursal);
+
+  if (estilistasFiltrados.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center">No hay estilistas registrados en esta selección</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = estilistasFiltrados.map(e => {
+    const suc = appData.sucursales.find(s => s.id === e.sucursalId);
+    const ventasEst = ventasFiltradas.filter(v => (v.estilistaId || v.estilista_id) === e.id);
+    const totalGenerado = ventasEst.reduce((sum, v) => sum + v.total, 0);
+
+    return `
+      <tr>
+        <td><strong>${e.nombre}</strong></td>
+        <td>${e.cedula || 'N/A'}</td>
+        <td>${suc ? suc.nombre : e.sucursalId}</td>
+        <td>${e.nacimiento || 'N/A'}</td>
+        <td>${ventasEst.length}</td>
+        <td><strong style="color: var(--emerald);">$${totalGenerado.toFixed(2)}</strong></td>
+        <td>
+          <div style="display: flex; gap: 0.4rem;">
+            <button class="btn btn-primary btn-sm" onclick="abrirModalEstilista('${e.id}')" title="Editar Estilista">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="eliminarEstilista('${e.id}')" title="Eliminar Estilista">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
 function renderizarSuperAdmin() {
   const container = document.getElementById('superAdminContainer');
   if (!container) return;
 
-  let totalCadena = appData.ventas.reduce((sum, v) => sum + v.total, 0);
+  const fechaInicio = document.getElementById('globalFechaInicio')?.value || '';
+  const fechaFin = document.getElementById('globalFechaFin')?.value || '';
+  const ventasGlobales = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
+
+  const totalCadena = ventasGlobales.reduce((sum, v) => sum + v.total, 0);
   document.getElementById('gananciasTotalesCadena').innerText = `$${totalCadena.toFixed(2)}`;
 
   container.innerHTML = appData.sucursales.map(s => {
-    const ventasSuc = appData.ventas.filter(v => v.sucursalId === s.id);
+    const ventasSuc = ventasGlobales.filter(v => v.sucursalId === s.id);
     const totalSucursal = ventasSuc.reduce((sum, v) => sum + v.total, 0);
     const numEstilistas = appData.estilistas.filter(e => e.sucursalId === s.id).length;
     const productosSuc = appData.productos.filter(p => p.sucursalId === s.id);
@@ -410,7 +521,7 @@ function renderizarSuperAdmin() {
                 </tr>
               </thead>
               <tbody>
-                ${ventasSuc.length === 0 ? `<tr><td colspan="5" class="text-center">Sin ventas registradas</td></tr>` : 
+                ${ventasSuc.length === 0 ? `<tr><td colspan="5" class="text-center">Sin ventas en el rango seleccionado</td></tr>` : 
                   ventasSuc.slice(-5).reverse().map(v => `
                     <tr>
                       <td>${v.fecha}</td>
@@ -441,15 +552,9 @@ function actualizarGraficosSuperAdmin() {
   const fechaFin = document.getElementById('reporteFechaFin').value;
   const filtroSucursal = document.getElementById('filtroReporteSucursal')?.value || 'todas';
 
-  let ventasFiltradas = [...appData.ventas];
+  let ventasFiltradas = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
   if (filtroSucursal !== 'todas') {
     ventasFiltradas = ventasFiltradas.filter(v => v.sucursalId === filtroSucursal);
-  }
-  if (fechaInicio) {
-    ventasFiltradas = ventasFiltradas.filter(v => v.fecha >= fechaInicio);
-  }
-  if (fechaFin) {
-    ventasFiltradas = ventasFiltradas.filter(v => v.fecha <= fechaFin);
   }
 
   if (window.repChart1) window.repChart1.destroy();
@@ -899,6 +1004,7 @@ async function guardarEstilista(e) {
   }
   cerrarModal('modalEstilista');
   renderizarEstilistas();
+  if (moduloActual === 'superadmin') renderizarEstilistasSuperAdmin();
   poblarSelects();
 }
 
@@ -915,6 +1021,7 @@ async function eliminarEstilista(id) {
     }
     appData.estilistas = appData.estilistas.filter(e => e.id !== id);
     renderizarEstilistas();
+    if (moduloActual === 'superadmin') renderizarEstilistasSuperAdmin();
     poblarSelects();
   }
 }
@@ -1252,4 +1359,474 @@ function setupTema() {
     document.body.classList.toggle('light-mode');
     document.body.classList.toggle('dark-mode');
   });
+}
+
+/* =========================================================
+   EXPORTACIÓN DE DATOS A EXCEL (.XLSX) CON SHEETJS
+   ========================================================= */
+
+function verificarLibreriaExcel() {
+  if (typeof XLSX === 'undefined') {
+    alert('La librería de Excel aún no se ha cargado. Verifica tu conexión a internet e inténtalo de nuevo.');
+    return false;
+  }
+  return true;
+}
+
+function obtenerFechaArchivo() {
+  return new Date().toISOString().split('T')[0];
+}
+
+// 1. Exportar Clientes
+function exportarExcelClientes() {
+  if (!verificarLibreriaExcel()) return;
+  if (appData.clientes.length === 0) return alert('No hay clientes registrados para exportar.');
+
+  const datos = appData.clientes.map(c => {
+    const acum = c.serviciosAcumulados || 0;
+    const pct = Math.round((acum / META_SERVICIOS_GRATIS) * 100);
+    return {
+      'ID Cliente': c.id,
+      'Nombre Completo': c.nombre,
+      'Teléfono': c.telefono || 'N/A',
+      'Servicios Acumulados': `${acum} / ${META_SERVICIOS_GRATIS}`,
+      'Progreso Fidelidad (%)': `${pct}%`,
+      'Estado Premio': acum >= META_SERVICIOS_GRATIS ? 'Corte Gratis Disponible' : 'En progreso',
+      'Fecha Nacimiento': c.nacimiento || 'N/A',
+      'Notas': c.notas || ''
+    };
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(datos);
+  XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+  XLSX.writeFile(wb, `Clientes_LeguendBarber_${obtenerFechaArchivo()}.xlsx`);
+}
+
+// 2. Exportar Estilistas (Módulo General)
+function exportarExcelEstilistas() {
+  if (!verificarLibreriaExcel()) return;
+  if (appData.estilistas.length === 0) return alert('No hay estilistas registrados para exportar.');
+
+  const sucActiva = appData.sucursales.find(s => s.id === appData.sucursalActiva);
+
+  const mapearEstilista = (e) => {
+    const suc = appData.sucursales.find(s => s.id === e.sucursalId);
+    const totalVentas = appData.ventas
+      .filter(v => (v.estilistaId || v.estilista_id) === e.id)
+      .reduce((sum, v) => sum + v.total, 0);
+
+    return {
+      'ID': e.id,
+      'Nombre Completo': e.nombre,
+      'Cédula': e.cedula || 'N/A',
+      'Fecha Nacimiento': e.nacimiento || 'N/A',
+      'Sucursal': suc ? suc.nombre : e.sucursalId,
+      'Ventas Generadas ($)': Number(totalVentas.toFixed(2))
+    };
+  };
+
+  const wb = XLSX.utils.book_new();
+
+  const estSucursal = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva).map(mapearEstilista);
+  if (estSucursal.length > 0) {
+    const wsSuc = XLSX.utils.json_to_sheet(estSucursal);
+    XLSX.utils.book_append_sheet(wb, wsSuc, (sucActiva?.nombre || 'Sucursal Actual').substring(0, 31));
+  }
+
+  const todosEstilistas = appData.estilistas.map(mapearEstilista);
+  const wsTodos = XLSX.utils.json_to_sheet(todosEstilistas);
+  XLSX.utils.book_append_sheet(wb, wsTodos, 'Todos los Estilistas');
+
+  XLSX.writeFile(wb, `Estilistas_LeguendBarber_${obtenerFechaArchivo()}.xlsx`);
+}
+
+// 3. Exportar Inventario de Productos
+function exportarExcelInventario() {
+  if (!verificarLibreriaExcel()) return;
+  if (appData.productos.length === 0) return alert('No hay productos registrados para exportar.');
+
+  const sucActiva = appData.sucursales.find(s => s.id === appData.sucursalActiva);
+
+  const mapearProducto = (p) => {
+    const suc = appData.sucursales.find(s => s.id === p.sucursalId);
+    return {
+      'ID': p.id,
+      'Producto': p.nombre,
+      'Categoría': p.categoria || 'General',
+      'Precio Unitario ($)': Number(p.precio.toFixed(2)),
+      'Stock Disponible': p.stock,
+      'Valor Total Stock ($)': Number((p.precio * p.stock).toFixed(2)),
+      'Estado Stock': p.stock <= 5 ? 'Stock Bajo' : 'Normal',
+      'Sucursal': suc ? suc.nombre : p.sucursalId
+    };
+  };
+
+  const wb = XLSX.utils.book_new();
+
+  const prodsSuc = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva).map(mapearProducto);
+  if (prodsSuc.length > 0) {
+    const wsSuc = XLSX.utils.json_to_sheet(prodsSuc);
+    XLSX.utils.book_append_sheet(wb, wsSuc, (sucActiva?.nombre || 'Sucursal Actual').substring(0, 31));
+  }
+
+  const todosProds = appData.productos.map(mapearProducto);
+  const wsTodos = XLSX.utils.json_to_sheet(todosProds);
+  XLSX.utils.book_append_sheet(wb, wsTodos, 'Inventario Global');
+
+  XLSX.writeFile(wb, `Inventario_LeguendBarber_${obtenerFechaArchivo()}.xlsx`);
+}
+
+// 4. Exportar Catálogo de Servicios
+function exportarExcelServicios() {
+  if (!verificarLibreriaExcel()) return;
+  if (appData.servicios.length === 0) return alert('No hay servicios registrados para exportar.');
+
+  const datos = appData.servicios.map(s => ({
+    'ID': s.id,
+    'Nombre del Servicio': s.nombre,
+    'Precio ($)': Number(s.precio.toFixed(2)),
+    'Popularidad (Usos)': s.usosCount || 0
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(datos);
+  XLSX.utils.book_append_sheet(wb, ws, 'Servicios');
+  XLSX.writeFile(wb, `Servicios_LeguendBarber_${obtenerFechaArchivo()}.xlsx`);
+}
+
+/* =========================================================
+   BOTONES EXCEL INDIVIDUALES DE SUPER ADMIN
+   ========================================================= */
+
+// A. Super Admin -> Control por Sucursales
+function exportarExcelControlSucursales() {
+  if (!verificarLibreriaExcel()) return;
+
+  const fechaInicio = document.getElementById('globalFechaInicio')?.value || '';
+  const fechaFin = document.getElementById('globalFechaFin')?.value || '';
+  const ventasFiltradas = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
+
+  const resumen = appData.sucursales.map(s => {
+    const ventasSuc = ventasFiltradas.filter(v => v.sucursalId === s.id);
+    const totalVentas = ventasSuc.reduce((sum, v) => sum + v.total, 0);
+    const numEstilistas = appData.estilistas.filter(e => e.sucursalId === s.id).length;
+    const prodsSuc = appData.productos.filter(p => p.sucursalId === s.id);
+    const totalUnidades = prodsSuc.reduce((sum, p) => sum + p.stock, 0);
+    const stockBajo = prodsSuc.filter(p => p.stock <= 5).length;
+    const valorInventario = prodsSuc.reduce((sum, p) => sum + (p.precio * p.stock), 0);
+
+    return {
+      'ID Sucursal': s.id,
+      'Sucursal': s.nombre,
+      'Dirección': s.direccion || 'Sin dirección',
+      'Rango Fechas': (fechaInicio || fechaFin) ? `${fechaInicio || 'Inicio'} a ${fechaFin || 'Hoy'}` : 'Todas las fechas',
+      'Transacciones': ventasSuc.length,
+      'Ingresos Totales ($)': Number(totalVentas.toFixed(2)),
+      'Estilistas': numEstilistas,
+      'Unidades en Stock': totalUnidades,
+      'Productos Stock Bajo': stockBajo,
+      'Valor Inventario ($)': Number(valorInventario.toFixed(2))
+    };
+  });
+
+  const detalleVentas = ventasFiltradas.map(v => {
+    const suc = appData.sucursales.find(s => s.id === (v.sucursalId || v.sucursal_id));
+    const cli = appData.clientes.find(c => c.id === (v.clienteId || v.cliente_id));
+    const est = appData.estilistas.find(e => e.id === (v.estilistaId || v.estilista_id));
+    return {
+      'Fecha': v.fecha,
+      'Sucursal': suc ? suc.nombre : (v.sucursalId || 'N/A'),
+      'Cliente': cli ? cli.nombre : 'Ocasional',
+      'Estilista': est ? est.nombre : 'General',
+      'Método Pago': v.metodoPago || v.metodo_pago,
+      'Total ($)': Number(v.total.toFixed(2))
+    };
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), 'Resumen Sucursales');
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(detalleVentas.length ? detalleVentas : [{ Mensaje: 'Sin ventas en el rango' }]),
+    'Ventas Consolidadas'
+  );
+  XLSX.writeFile(wb, `Control_Sucursales_${obtenerFechaArchivo()}.xlsx`);
+}
+
+// B. Super Admin -> Dashboard & Facturación
+function exportarExcelDashboardFacturacion() {
+  if (!verificarLibreriaExcel()) return;
+
+  const fechaInicio = document.getElementById('dashFechaInicio')?.value || '';
+  const fechaFin = document.getElementById('dashFechaFin')?.value || '';
+  const hayFiltroFecha = Boolean(fechaInicio || fechaFin);
+
+  const sucActiva = appData.sucursales.find(s => s.id === appData.sucursalActiva);
+  const ventasSucBase = appData.ventas.filter(v => v.sucursalId === appData.sucursalActiva);
+  const ventasSuc = hayFiltroFecha
+    ? filtrarVentasPorRango(ventasSucBase, fechaInicio, fechaFin)
+    : ventasSucBase;
+
+  const totalIngresos = ventasSuc.reduce((sum, v) => sum + v.total, 0);
+  const totalEfectivo = ventasSuc.filter(v => (v.metodoPago || v.metodo_pago) === 'Efectivo').reduce((sum, v) => sum + v.total, 0);
+  const totalTransferencia = ventasSuc.filter(v => (v.metodoPago || v.metodo_pago) === 'Transferencia').reduce((sum, v) => sum + v.total, 0);
+
+  const kpis = [{
+    'Sucursal': sucActiva ? sucActiva.nombre : appData.sucursalActiva,
+    'Rango Fechas': hayFiltroFecha ? `${fechaInicio || 'Inicio'} a ${fechaFin || 'Hoy'}` : 'Histórico Completo',
+    'Total Facturas': ventasSuc.length,
+    'Ingresos Efectivo ($)': Number(totalEfectivo.toFixed(2)),
+    'Ingresos Transferencia ($)': Number(totalTransferencia.toFixed(2)),
+    'Ingresos Totales ($)': Number(totalIngresos.toFixed(2)),
+    'Estilistas Activos': appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva).length,
+    'Productos Stock Bajo': appData.productos.filter(p => p.sucursalId === appData.sucursalActiva && p.stock <= 5).length
+  }];
+
+  const facturas = ventasSuc.slice().reverse().map(v => {
+    const cli = appData.clientes.find(c => c.id === (v.clienteId || v.cliente_id));
+    const est = appData.estilistas.find(e => e.id === (v.estilistaId || v.estilista_id));
+    const detalle = Array.isArray(v.items)
+      ? v.items.map(i => `${i.cantidad}x ${i.nombre}`).join(', ')
+      : '';
+
+    return {
+      'ID Factura': v.id,
+      'Fecha': v.fecha,
+      'Cliente': cli ? cli.nombre : 'Ocasional',
+      'Estilista': est ? est.nombre : 'Sin Asignar',
+      'Método de Pago': v.metodoPago || v.metodo_pago,
+      'Detalle': detalle,
+      'Total ($)': Number(v.total.toFixed(2))
+    };
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpis), 'Resumen Dashboard');
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(facturas.length ? facturas : [{ Mensaje: 'Sin facturas en el rango seleccionado' }]),
+    'Facturas Sucursal'
+  );
+  XLSX.writeFile(wb, `Facturacion_${(sucActiva?.nombre || 'Sucursal').replace(/\s+/g, '_')}_${obtenerFechaArchivo()}.xlsx`);
+}
+
+// C. Super Admin -> Reportes & Estadísticas
+function exportarExcelReportesEstadisticas() {
+  if (!verificarLibreriaExcel()) return;
+
+  const fechaInicio = document.getElementById('reporteFechaInicio')?.value || '';
+  const fechaFin = document.getElementById('reporteFechaFin')?.value || '';
+  const filtroSucursal = document.getElementById('filtroReporteSucursal')?.value || 'todas';
+
+  let ventasFiltradas = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
+  if (filtroSucursal !== 'todas') {
+    ventasFiltradas = ventasFiltradas.filter(v => v.sucursalId === filtroSucursal);
+  }
+
+  // Hoja 1: Servicios Más Solicitados
+  const hojaServicios = appData.servicios.map(s => ({
+    'Servicio': s.nombre,
+    'Precio ($)': Number(s.precio.toFixed(2)),
+    'Cantidad Usos': s.usosCount || 0
+  }));
+
+  // Hoja 2: Ventas por Estilista
+  const estilistasSuc = filtroSucursal === 'todas'
+    ? appData.estilistas
+    : appData.estilistas.filter(e => e.sucursalId === filtroSucursal);
+
+  const hojaEstilistas = estilistasSuc.map(e => {
+    const suc = appData.sucursales.find(s => s.id === e.sucursalId);
+    const ventasEst = ventasFiltradas.filter(v => (v.estilistaId || v.estilista_id) === e.id);
+    const total = ventasEst.reduce((sum, v) => sum + v.total, 0);
+    return {
+      'Estilista': e.nombre,
+      'Sucursal': suc ? suc.nombre : e.sucursalId,
+      'Servicios/Ventas Realizadas': ventasEst.length,
+      'Total Ventas ($)': Number(total.toFixed(2))
+    };
+  });
+
+  // Hoja 3: Ingresos por Fecha
+  const ventasPorFecha = {};
+  ventasFiltradas.forEach(v => {
+    ventasPorFecha[v.fecha] = (ventasPorFecha[v.fecha] || 0) + v.total;
+  });
+  const hojaFechas = Object.keys(ventasPorFecha).sort().map(f => ({
+    'Fecha': f,
+    'Ingresos ($)': Number(ventasPorFecha[f].toFixed(2))
+  }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hojaServicios.length ? hojaServicios : [{ Mensaje: 'Sin datos' }]), 'Servicios Populares');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hojaEstilistas.length ? hojaEstilistas : [{ Mensaje: 'Sin datos' }]), 'Ventas por Estilista');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hojaFechas.length ? hojaFechas : [{ Mensaje: 'Sin datos' }]), 'Ingresos por Fecha');
+  XLSX.writeFile(wb, `Reportes_Estadisticas_${obtenerFechaArchivo()}.xlsx`);
+}
+
+// D. Super Admin -> Estilistas
+function exportarExcelEstilistasSuperAdmin() {
+  if (!verificarLibreriaExcel()) return;
+
+  const fechaInicio = document.getElementById('estAdminFechaInicio')?.value || '';
+  const fechaFin = document.getElementById('estAdminFechaFin')?.value || '';
+  const filtroSucursal = document.getElementById('filtroEstilistasAdminSucursal')?.value || 'todas';
+
+  const ventasFiltradas = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
+  const estilistasFiltrados = filtroSucursal === 'todas'
+    ? appData.estilistas
+    : appData.estilistas.filter(e => e.sucursalId === filtroSucursal);
+
+  if (estilistasFiltrados.length === 0) return alert('No hay estilistas en la selección actual para exportar.');
+
+  const datos = estilistasFiltrados.map(e => {
+    const suc = appData.sucursales.find(s => s.id === e.sucursalId);
+    const ventasEst = ventasFiltradas.filter(v => (v.estilistaId || v.estilista_id) === e.id);
+    const totalGenerado = ventasEst.reduce((sum, v) => sum + v.total, 0);
+
+    return {
+      'ID': e.id,
+      'Estilista': e.nombre,
+      'Cédula': e.cedula || 'N/A',
+      'Sucursal': suc ? suc.nombre : e.sucursalId,
+      'Fecha Nacimiento': e.nacimiento || 'N/A',
+      'Rango Evaluado': (fechaInicio || fechaFin) ? `${fechaInicio || 'Inicio'} a ${fechaFin || 'Hoy'}` : 'Todas las fechas',
+      'Cantidad Atenciones': ventasEst.length,
+      'Ventas Generadas ($)': Number(totalGenerado.toFixed(2))
+    };
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(datos), 'Rendimiento Estilistas');
+  XLSX.writeFile(wb, `Estilistas_SuperAdmin_${obtenerFechaArchivo()}.xlsx`);
+}
+
+// 5. Exportar Todo (Super Admin: Multi-hoja completo)
+function exportarExcelSuperAdmin() {
+  if (!verificarLibreriaExcel()) return;
+
+  const wb = XLSX.utils.book_new();
+
+  // Hoja 1: Resumen por Sucursales
+  const resumenSucursales = appData.sucursales.map(s => {
+    const ventasSuc = appData.ventas.filter(v => v.sucursalId === s.id);
+    const totalVentas = ventasSuc.reduce((sum, v) => sum + v.total, 0);
+    const numEstilistas = appData.estilistas.filter(e => e.sucursalId === s.id).length;
+    const prodsSuc = appData.productos.filter(p => p.sucursalId === s.id);
+    const totalUnidades = prodsSuc.reduce((sum, p) => sum + p.stock, 0);
+    const valorInventario = prodsSuc.reduce((sum, p) => sum + (p.precio * p.stock), 0);
+
+    return {
+      'ID Sucursal': s.id,
+      'Sucursal': s.nombre,
+      'Dirección': s.direccion || 'Sin dirección',
+      'Total Transacciones': ventasSuc.length,
+      'Ingresos Totales ($)': Number(totalVentas.toFixed(2)),
+      'Estilistas Activos': numEstilistas,
+      'Unidades en Stock': totalUnidades,
+      'Valor Inventario ($)': Number(valorInventario.toFixed(2))
+    };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenSucursales), 'Resumen Sucursales');
+
+  // Hoja 2: Historial Completo de Ventas / Facturas
+  const datosVentas = appData.ventas.map(v => {
+    const suc = appData.sucursales.find(s => s.id === (v.sucursalId || v.sucursal_id));
+    const cli = appData.clientes.find(c => c.id === (v.clienteId || v.cliente_id));
+    const est = appData.estilistas.find(e => e.id === (v.estilistaId || v.estilista_id));
+    const detalle = Array.isArray(v.items)
+      ? v.items.map(i => `${i.cantidad}x ${i.nombre}`).join(', ')
+      : '';
+
+    return {
+      'ID Venta': v.id,
+      'Fecha': v.fecha,
+      'Sucursal': suc ? suc.nombre : (v.sucursalId || 'N/A'),
+      'Cliente': cli ? cli.nombre : 'Ocasional',
+      'Estilista': est ? est.nombre : 'Sin Asignar',
+      'Método de Pago': v.metodoPago || v.metodo_pago || 'N/A',
+      'Detalle': detalle,
+      'Total ($)': Number(v.total.toFixed(2))
+    };
+  });
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(datosVentas.length ? datosVentas : [{ Mensaje: 'Sin ventas registradas' }]),
+    'Ventas y Facturas'
+  );
+
+  // Hoja 3: Clientes
+  const datosClientes = appData.clientes.map(c => {
+    const acum = c.serviciosAcumulados || 0;
+    return {
+      'ID': c.id,
+      'Nombre': c.nombre,
+      'Teléfono': c.telefono || 'N/A',
+      'Servicios Acumulados': `${acum}/${META_SERVICIOS_GRATIS}`,
+      'Fidelidad (%)': `${Math.round((acum / META_SERVICIOS_GRATIS) * 100)}%`,
+      'Fecha Nacimiento': c.nacimiento || 'N/A',
+      'Notas': c.notas || ''
+    };
+  });
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(datosClientes.length ? datosClientes : [{ Mensaje: 'Sin clientes' }]),
+    'Clientes'
+  );
+
+  // Hoja 4: Estilistas
+  const datosEstilistas = appData.estilistas.map(e => {
+    const suc = appData.sucursales.find(s => s.id === e.sucursalId);
+    const ventasEst = appData.ventas
+      .filter(v => (v.estilistaId || v.estilista_id) === e.id)
+      .reduce((sum, v) => sum + v.total, 0);
+    return {
+      'ID': e.id,
+      'Nombre': e.nombre,
+      'Cédula': e.cedula || 'N/A',
+      'Fecha Nacimiento': e.nacimiento || 'N/A',
+      'Sucursal': suc ? suc.nombre : e.sucursalId,
+      'Ventas Totales ($)': Number(ventasEst.toFixed(2))
+    };
+  });
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(datosEstilistas.length ? datosEstilistas : [{ Mensaje: 'Sin estilistas' }]),
+    'Estilistas'
+  );
+
+  // Hoja 5: Inventario Global de Productos
+  const datosProductos = appData.productos.map(p => {
+    const suc = appData.sucursales.find(s => s.id === p.sucursalId);
+    return {
+      'ID': p.id,
+      'Producto': p.nombre,
+      'Categoría': p.categoria || 'General',
+      'Precio ($)': Number(p.precio.toFixed(2)),
+      'Stock': p.stock,
+      'Valor Total ($)': Number((p.precio * p.stock).toFixed(2)),
+      'Sucursal': suc ? suc.nombre : p.sucursalId
+    };
+  });
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(datosProductos.length ? datosProductos : [{ Mensaje: 'Sin productos' }]),
+    'Inventario Productos'
+  );
+
+  // Hoja 6: Catálogo de Servicios
+  const datosServicios = appData.servicios.map(s => ({
+    'ID': s.id,
+    'Servicio': s.nombre,
+    'Precio ($)': Number(s.precio.toFixed(2)),
+    'Usos': s.usosCount || 0
+  }));
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(datosServicios.length ? datosServicios : [{ Mensaje: 'Sin servicios' }]),
+    'Servicios'
+  );
+
+  XLSX.writeFile(wb, `Reporte_Completo_SuperAdmin_${obtenerFechaArchivo()}.xlsx`);
 }
