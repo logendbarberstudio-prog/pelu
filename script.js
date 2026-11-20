@@ -43,7 +43,11 @@ async function cargarDatosDesdeSupabase() {
 
     appData.sucursales = resSuc.data;
     appData.sucursalActiva = appData.sucursalActiva || appData.sucursales[0]?.id;
-    appData.estilistas = (resEst.data || []).map(e => ({ ...e, sucursalId: e.sucursal_id }));
+    appData.estilistas = (resEst.data || []).map(e => ({
+      ...e,
+      sucursalId: e.sucursal_id,
+      telefono: e.telefono || e.celular || e.phone || ''
+    }));
     appData.servicios = (resServ.data || []).map(s => ({ ...s, fechaCreacion: s.fecha_creacion, usosCount: s.usos_count }));
     appData.productos = (resProd.data || []).map(p => ({ ...p, sucursalId: p.sucursal_id, fechaCreacion: p.fecha_creacion }));
     
@@ -78,9 +82,9 @@ async function inicializarDatosDefault() {
     { id: 'suc_3', nombre: 'Sucursal Sur', direccion: 'Av. Las Palmas #88' }
   ];
   const defaultEstilistas = [
-    { id: 'e1', sucursal_id: 'suc_1', nombre: 'Carlos Mendoza', cedula: '1712345678', nacimiento: '1988-03-12' },
-    { id: 'e2', sucursal_id: 'suc_2', nombre: 'Ana Gómez', cedula: '1723456789', nacimiento: '1992-07-25' },
-    { id: 'e3', sucursal_id: 'suc_3', nombre: 'Luis Torres', cedula: '1734567890', nacimiento: '1990-11-05' }
+    { id: 'e1', sucursal_id: 'suc_1', nombre: 'Carlos Mendoza', cedula: '1712345678', telefono: '0991112233', nacimiento: '1988-03-12' },
+    { id: 'e2', sucursal_id: 'suc_2', nombre: 'Ana Gómez', cedula: '1723456789', telefono: '0992223344', nacimiento: '1992-07-25' },
+    { id: 'e3', sucursal_id: 'suc_3', nombre: 'Luis Torres', cedula: '1734567890', telefono: '0993334455', nacimiento: '1990-11-05' }
   ];
   const defaultServicios = [
     { id: 's1', nombre: 'Corte Caballero', precio: 12.00, tipo: 'servicio', fecha_creacion: '2026-01-05', usos_count: 42 },
@@ -411,7 +415,7 @@ function renderizarEstilistasSuperAdmin() {
     : appData.estilistas.filter(e => e.sucursalId === filtroSucursal);
 
   if (estilistasFiltrados.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center">No hay estilistas registrados en esta selección</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center">No hay estilistas registrados en esta selección</td></tr>`;
     return;
   }
 
@@ -424,6 +428,7 @@ function renderizarEstilistasSuperAdmin() {
       <tr>
         <td><strong>${e.nombre}</strong></td>
         <td>${e.cedula || 'N/A'}</td>
+        <td>${e.telefono || 'N/A'}</td>
         <td>${suc ? suc.nombre : e.sucursalId}</td>
         <td>${e.nacimiento || 'N/A'}</td>
         <td>${ventasEst.length}</td>
@@ -973,6 +978,7 @@ function renderizarEstilistas() {
     <div class="card text-center">
       <h3>${e.nombre}</h3>
       <p>Cédula: ${e.cedula || 'N/A'}</p>
+      <p>Teléfono: ${e.telefono || 'N/A'}</p>
       <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 0.75rem;">
         <button class="btn btn-primary btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="abrirModalEstilista('${e.id}')" title="Editar Estilista">
           <i class="fa-solid fa-pen"></i>
@@ -991,15 +997,39 @@ async function guardarEstilista(e) {
   const id = document.getElementById('estilistaId').value;
   const nombre = document.getElementById('estilistaNombre').value;
   const cedula = document.getElementById('estilistaCedula').value;
+  const telefono = document.getElementById('estilistaTelefono').value.trim();
   const nacimiento = document.getElementById('estilistaNacimiento').value;
 
   if (id) {
-    await supabaseClient.from('estilistas').update({ nombre, cedula, nacimiento }).eq('id', id);
+    const { error } = await supabaseClient.from('estilistas').update({ nombre, cedula, telefono, nacimiento }).eq('id', id);
+    if (error && error.message && error.message.toLowerCase().includes('telefono')) {
+      const { error: errFallback } = await supabaseClient.from('estilistas').update({ nombre, cedula, nacimiento }).eq('id', id);
+      if (errFallback) {
+        alert('Error al actualizar estilista: ' + errFallback.message);
+        return;
+      }
+    } else if (error) {
+      alert('Error al actualizar estilista: ' + error.message);
+      return;
+    }
+
     const idx = appData.estilistas.findIndex(x => x.id === id);
-    if (idx !== -1) appData.estilistas[idx] = { ...appData.estilistas[idx], nombre, cedula, nacimiento };
+    if (idx !== -1) appData.estilistas[idx] = { ...appData.estilistas[idx], nombre, cedula, telefono, nacimiento };
   } else {
-    const nuevo = { id: 'e_' + Date.now(), sucursal_id: appData.sucursalActiva, nombre, cedula, nacimiento };
-    await supabaseClient.from('estilistas').insert([nuevo]);
+    const nuevo = { id: 'e_' + Date.now(), sucursal_id: appData.sucursalActiva, nombre, cedula, telefono, nacimiento };
+    const { error } = await supabaseClient.from('estilistas').insert([nuevo]);
+    if (error && error.message && error.message.toLowerCase().includes('telefono')) {
+      const { telefono: _tel, ...sinTelefono } = nuevo;
+      const { error: errFallback } = await supabaseClient.from('estilistas').insert([sinTelefono]);
+      if (errFallback) {
+        alert('Error al guardar estilista: ' + errFallback.message);
+        return;
+      }
+    } else if (error) {
+      alert('Error al guardar estilista: ' + error.message);
+      return;
+    }
+
     appData.estilistas.push({ ...nuevo, sucursalId: nuevo.sucursal_id });
   }
   cerrarModal('modalEstilista');
@@ -1324,11 +1354,13 @@ function abrirModalEstilista(id = null) {
     document.getElementById('estilistaId').value = e.id;
     document.getElementById('estilistaNombre').value = e.nombre;
     document.getElementById('estilistaCedula').value = e.cedula;
+    document.getElementById('estilistaTelefono').value = e.telefono || '';
     document.getElementById('estilistaNacimiento').value = e.nacimiento;
   } else {
     document.getElementById('estilistaId').value = '';
     document.getElementById('estilistaNombre').value = '';
     document.getElementById('estilistaCedula').value = '';
+    document.getElementById('estilistaTelefono').value = '';
     document.getElementById('estilistaNacimiento').value = '';
   }
   abrirModal('modalEstilista');
@@ -1420,6 +1452,7 @@ function exportarExcelEstilistas() {
       'ID': e.id,
       'Nombre Completo': e.nombre,
       'Cédula': e.cedula || 'N/A',
+      'Teléfono': e.telefono || 'N/A',
       'Fecha Nacimiento': e.nacimiento || 'N/A',
       'Sucursal': suc ? suc.nombre : e.sucursalId,
       'Ventas Generadas ($)': Number(totalVentas.toFixed(2))
@@ -1642,6 +1675,7 @@ function exportarExcelReportesEstadisticas() {
     const total = ventasEst.reduce((sum, v) => sum + v.total, 0);
     return {
       'Estilista': e.nombre,
+      'Teléfono': e.telefono || 'N/A',
       'Sucursal': suc ? suc.nombre : e.sucursalId,
       'Servicios/Ventas Realizadas': ventasEst.length,
       'Total Ventas ($)': Number(total.toFixed(2))
@@ -1689,6 +1723,7 @@ function exportarExcelEstilistasSuperAdmin() {
       'ID': e.id,
       'Estilista': e.nombre,
       'Cédula': e.cedula || 'N/A',
+      'Teléfono': e.telefono || 'N/A',
       'Sucursal': suc ? suc.nombre : e.sucursalId,
       'Fecha Nacimiento': e.nacimiento || 'N/A',
       'Rango Evaluado': (fechaInicio || fechaFin) ? `${fechaInicio || 'Inicio'} a ${fechaFin || 'Hoy'}` : 'Todas las fechas',
@@ -1785,6 +1820,7 @@ function exportarExcelSuperAdmin() {
       'ID': e.id,
       'Nombre': e.nombre,
       'Cédula': e.cedula || 'N/A',
+      'Teléfono': e.telefono || 'N/A',
       'Fecha Nacimiento': e.nacimiento || 'N/A',
       'Sucursal': suc ? suc.nombre : e.sucursalId,
       'Ventas Totales ($)': Number(ventasEst.toFixed(2))
