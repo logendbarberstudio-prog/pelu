@@ -11,6 +11,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- Librería SheetJS para exportar a Excel (.xlsx) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Librería jsPDF y AutoTable para generar PDF de Cierre de Caja -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body class="dark-mode">
   <div class="lines">
@@ -242,7 +245,7 @@
               <input type="text" id="buscarCliente" class="form-control" placeholder="Buscar por nombre o teléfono..." onkeyup="renderizarClientes()">
             </div>
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-              <button class="btn btn-excel" onclick="exportarExcelClientes()">
+              <button class="btn btn-excel admin-only" onclick="exportarExcelClientes()">
                 <i class="fa-solid fa-file-excel"></i> Exportar Excel
               </button>
               <button class="btn btn-primary" onclick="abrirModalCliente()">
@@ -286,11 +289,18 @@
                 <i class="fa-solid fa-user-ninja"></i> Estilistas
               </button>
             </div>
-            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+              <select id="alcanceCierreCaja" class="form-control" style="width: auto; min-height: 36px; padding: 0.35rem 0.65rem; font-size: 0.85rem;" title="Alcance del Cierre de Caja">
+                <option value="sucursal">Sucursal Activa</option>
+                <option value="todas">Todas las Sucursales</option>
+              </select>
+              <button type="button" class="btn btn-danger btn-sm" onclick="abrirModalCierreCaja()" title="Generar PDF y eliminar historial de ventas para cerrar caja">
+                <i class="fa-solid fa-cash-register"></i> Cerrar Caja (PDF y Limpiar)
+              </button>
               <button class="btn btn-excel btn-sm" onclick="exportarExcelSuperAdmin()">
                 <i class="fa-solid fa-file-excel"></i> Exportar Todo a Excel
               </button>
-              <button class="btn btn-danger btn-sm" onclick="cerrarSesionSuperAdmin()">
+              <button class="btn btn-secondary btn-sm" onclick="cerrarSesionSuperAdmin()">
                 <i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión Super Admin
               </button>
             </div>
@@ -350,8 +360,17 @@
                   <button type="button" class="btn btn-secondary btn-sm" onclick="limpiarFiltroFechas('dashboard')" title="Mostrar todas las fechas">
                     <i class="fa-solid fa-rotate-left"></i> Limpiar
                   </button>
+                  <button type="button" class="btn btn-danger btn-sm" onclick="abrirModalCierreCaja()" title="Generar PDF y eliminar historial de ventas para cerrar caja">
+                    <i class="fa-solid fa-cash-register"></i> Cerrar Caja
+                  </button>
                   <button type="button" class="btn btn-excel btn-sm" onclick="exportarExcelDashboardFacturacion()" title="Exportar Dashboard y Facturas a Excel">
                     <i class="fa-solid fa-file-excel"></i> Excel Facturación
+                  </button>
+                  <button type="button" class="btn btn-excel btn-sm" onclick="exportarExcelDashboardProductos()" title="Exportar Facturación de Productos a Excel">
+                    <i class="fa-solid fa-file-excel"></i> Excel Productos
+                  </button>
+                  <button type="button" class="btn btn-excel btn-sm" onclick="exportarExcelDashboardServicios()" title="Exportar Facturación de Servicios a Excel">
+                    <i class="fa-solid fa-file-excel"></i> Excel Servicios
                   </button>
                 </div>
               </div>
@@ -513,6 +532,47 @@
           <button type="submit" class="btn btn-primary">Ingresar</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CIERRE DE CAJA -->
+  <div class="modal" id="modalCierreCaja">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-cash-register" style="color: var(--danger);"></i> Cierre de Caja</h3>
+        <button class="close-btn" onclick="cerrarModal('modalCierreCaja')">&times;</button>
+      </div>
+      <div style="background: var(--bg-primary); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+        <p style="font-size: 0.9rem; margin-bottom: 0.5rem;">
+          <strong>Alcance:</strong> <span id="cierreResumenAlcance">-</span>
+        </p>
+        <p style="font-size: 0.9rem; margin-bottom: 0.5rem;">
+          <strong>Fecha y Hora de Cierre:</strong> <span id="cierreResumenFechaHora">-</span>
+        </p>
+        <p style="font-size: 0.9rem; margin-bottom: 0.5rem;">
+          <strong>Ventas a Cerrar:</strong> <span id="cierreResumenCantidad">0</span>
+        </p>
+        <p style="font-size: 1rem; color: var(--emerald); margin-bottom: 0;">
+          <strong>Total a Cerrar:</strong> <span id="cierreResumenTotal">$0.00</span>
+        </p>
+      </div>
+      <div class="form-group">
+        <label>Fecha de Cierre de Caja:</label>
+        <input type="date" id="cierreFechaInput" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label>Observaciones / Notas de Cierre (Opcional):</label>
+        <textarea id="cierreObservaciones" class="form-control" rows="2" placeholder="Ej: Cuadre de efectivo conforme, entrega de turno..."></textarea>
+      </div>
+      <p style="font-size: 0.8rem; color: var(--amber);">
+        <i class="fa-solid fa-triangle-exclamation"></i> Al confirmar, se descargará el reporte PDF con todas las ventas y se eliminará el historial de ventas seleccionado de la base de datos.
+      </p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="cerrarModal('modalCierreCaja')">Cancelar</button>
+        <button type="button" id="btnConfirmarCierreCaja" class="btn btn-danger" onclick="ejecutarCierreCaja()">
+          <i class="fa-solid fa-file-pdf"></i> Descargar PDF y Eliminar Historial
+        </button>
+      </div>
     </div>
   </div>
 

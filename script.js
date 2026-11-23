@@ -16,6 +16,38 @@ let appData = {
 let esSuperAdmin = false;
 const META_SERVICIOS_GRATIS = 8;
 
+const ENCABEZADOS_MODULO = {
+  pos: {
+    titulo: 'Punto de Venta - Caja',
+    subtitulo: 'Facturación y cobranza'
+  },
+  clientes: {
+    titulo: 'Gestión de Clientes',
+    subtitulo: 'Directorio, fidelidad y recompensas'
+  },
+  estilistas: {
+    titulo: 'Gestión de Estilistas',
+    subtitulo: 'Equipo de trabajo de la sucursal'
+  },
+  inventario: {
+    titulo: 'Inventario & Servicios',
+    subtitulo: 'Control de productos y catálogo de servicios'
+  },
+  superadmin: {
+    titulo: 'Panel Super Admin',
+    subtitulo: 'Control multi-sucursal, facturación y reportes'
+  }
+};
+
+function actualizarEncabezadoModulo(modulo) {
+  const pageTitle = document.getElementById('pageTitle');
+  const pageSubTitle = document.getElementById('pageSubTitle');
+  const info = ENCABEZADOS_MODULO[modulo] || ENCABEZADOS_MODULO.pos;
+
+  if (pageTitle) pageTitle.innerText = info.titulo;
+  if (pageSubTitle) pageSubTitle.innerText = info.subtitulo;
+}
+
 async function cargarDatosDesdeSupabase() {
   try {
     if (typeof supabase !== 'undefined') {
@@ -42,12 +74,60 @@ async function cargarDatosDesdeSupabase() {
     }
 
     appData.sucursales = resSuc.data;
-    appData.sucursalActiva = appData.sucursalActiva || appData.sucursales[0]?.id;
-    appData.estilistas = (resEst.data || []).map(e => ({
+
+    // Selecciona 'suc_1' si existe; de lo contrario toma la primera sucursal disponible
+    const suc1 = appData.sucursales.find(s => String(s.id) === 'suc_1');
+    const activaValida = appData.sucursales.some(s => String(s.id) === String(appData.sucursalActiva));
+    if (!activaValida) {
+      appData.sucursalActiva = suc1 ? suc1.id : appData.sucursales[0]?.id;
+    }
+
+    let estilistasRaw = resEst.data || [];
+
+    // Si no hay estilistas en la sucursal activa (o en suc_1), inserta por defecto de forma segura
+    const idSucursal1 = suc1 ? suc1.id : appData.sucursalActiva;
+    const tieneEstilistasSuc1 = estilistasRaw.some(
+      e => String(e.sucursal_id ?? e.sucursalId ?? '') === String(idSucursal1)
+    );
+
+    if (!tieneEstilistasSuc1 && idSucursal1) {
+      const defaultEstSuc1 = [
+        {
+          id: 'e_suc1_' + Date.now() + '_1',
+          sucursal_id: idSucursal1,
+          nombre: 'Carlos Mendoza',
+          cedula: '1712345678',
+          telefono: '0991112233',
+          nacimiento: '1988-03-12'
+        },
+        {
+          id: 'e_suc1_' + Date.now() + '_2',
+          sucursal_id: idSucursal1,
+          nombre: 'Javier Rojas',
+          cedula: '1719876543',
+          telefono: '0994445566',
+          nacimiento: '1991-06-18'
+        }
+      ];
+
+      const { data: insertados, error: errEst } = await supabaseClient
+        .from('estilistas')
+        .insert(defaultEstSuc1)
+        .select();
+
+      if (!errEst && Array.isArray(insertados) && insertados.length > 0) {
+        estilistasRaw = [...estilistasRaw, ...insertados];
+      } else {
+        estilistasRaw = [...estilistasRaw, ...defaultEstSuc1];
+      }
+    }
+
+    appData.estilistas = estilistasRaw.map(e => ({
       ...e,
-      sucursalId: e.sucursal_id,
+      sucursalId: e.sucursal_id ?? e.sucursalId ?? idSucursal1,
       telefono: e.telefono || e.celular || e.phone || ''
     }));
+
     appData.servicios = (resServ.data || []).map(s => ({ ...s, fechaCreacion: s.fecha_creacion, usosCount: s.usos_count }));
     appData.productos = (resProd.data || []).map(p => ({ ...p, sucursalId: p.sucursal_id, fechaCreacion: p.fecha_creacion }));
     
@@ -163,7 +243,7 @@ function cerrarMenuMovil() {
 
 function activarPestana(btn, targetTab) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  if (btn) btn.classList.add('active');
   moduloActual = targetTab;
   renderizarModulo(moduloActual);
   cerrarMenuMovil();
@@ -237,7 +317,7 @@ function renderizarSucursales() {
   const select = document.getElementById('sucursalSelect');
   if (select) {
     select.innerHTML = appData.sucursales.map(s => `
-      <option value="${s.id}" ${s.id === appData.sucursalActiva ? 'selected' : ''}>${s.nombre}</option>
+      <option value="${s.id}" ${String(s.id) === String(appData.sucursalActiva) ? 'selected' : ''}>${s.nombre}</option>
     `).join('');
   }
 }
@@ -278,6 +358,8 @@ async function eliminarSucursalActiva() {
 }
 
 function renderizarModulo(modulo) {
+  actualizarEncabezadoModulo(modulo);
+
   document.querySelectorAll('.module').forEach(m => m.classList.remove('active'));
   const activeMod = document.getElementById(`mod-${modulo}`);
   if (activeMod) activeMod.classList.add('active');
@@ -335,7 +417,7 @@ function renderizarDashboard() {
   const fechaFin = document.getElementById('dashFechaFin')?.value || '';
   const hayFiltroFecha = Boolean(fechaInicio || fechaFin);
 
-  const ventasSucBase = appData.ventas.filter(v => v.sucursalId === appData.sucursalActiva);
+  const ventasSucBase = appData.ventas.filter(v => String(v.sucursalId) === String(appData.sucursalActiva));
   const ventasSuc = hayFiltroFecha
     ? filtrarVentasPorRango(ventasSucBase, fechaInicio, fechaFin)
     : ventasSucBase;
@@ -353,8 +435,8 @@ function renderizarDashboard() {
   }
 
   document.getElementById('dashIngresos').innerText = `$${montoIngresos.toFixed(2)}`;
-  document.getElementById('dashEstilistas').innerText = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva).length;
-  document.getElementById('dashStockBajo').innerText = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva && p.stock <= 5).length;
+  document.getElementById('dashEstilistas').innerText = appData.estilistas.filter(e => String(e.sucursalId) === String(appData.sucursalActiva)).length;
+  document.getElementById('dashStockBajo').innerText = appData.productos.filter(p => String(p.sucursalId) === String(appData.sucursalActiva) && p.stock <= 5).length;
 
   const tbodyVentas = document.getElementById('dashTablaVentas');
   if (tbodyVentas) {
@@ -370,6 +452,243 @@ function renderizarDashboard() {
           <td><button class="btn btn-primary btn-sm" onclick="reimprimirTicket('${v.id}')"><i class="fa-solid fa-print"></i></button></td>
         </tr>
       `).join('');
+  }
+}
+
+/* =========================================================
+   CIERRE DE CAJA: GENERAR PDF CON TODAS LAS VENTAS Y ELIMINAR HISTORIAL
+   ========================================================= */
+
+function obtenerVentasParaCierre(alcance) {
+  if (alcance === 'todas') {
+    return [...appData.ventas];
+  }
+  return appData.ventas.filter(
+    v => String(v.sucursalId ?? v.sucursal_id) === String(appData.sucursalActiva)
+  );
+}
+
+function obtenerDescripcionAlcanceCierre(alcance) {
+  if (alcance === 'todas') {
+    return 'Todas las Sucursales';
+  }
+  const suc = appData.sucursales.find(s => String(s.id) === String(appData.sucursalActiva));
+  return suc ? suc.nombre : `Sucursal (${appData.sucursalActiva})`;
+}
+
+function abrirModalCierreCaja() {
+  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
+
+  const alcance = document.getElementById('alcanceCierreCaja')?.value || 'sucursal';
+  const ventasCierre = obtenerVentasParaCierre(alcance);
+
+  if (ventasCierre.length === 0) {
+    return alert('No hay ventas registradas en el historial para realizar el cierre de caja.');
+  }
+
+  const totalCierre = ventasCierre.reduce((sum, v) => sum + Number(v.total || 0), 0);
+  const ahora = new Date();
+  const fechaHoy = ahora.toISOString().split('T')[0];
+  const horaActual = ahora.toLocaleTimeString('es-EC', { hour12: false });
+
+  document.getElementById('cierreResumenAlcance').innerText = obtenerDescripcionAlcanceCierre(alcance);
+  document.getElementById('cierreResumenFechaHora').innerText = `${fechaHoy} ${horaActual}`;
+  document.getElementById('cierreResumenCantidad').innerText = `${ventasCierre.length} venta(s)`;
+  document.getElementById('cierreResumenTotal').innerText = `$${totalCierre.toFixed(2)}`;
+  document.getElementById('cierreFechaInput').value = fechaHoy;
+  document.getElementById('cierreObservaciones').value = '';
+
+  abrirModal('modalCierreCaja');
+}
+
+function generarPDFCierreCaja({ ventas, alcanceTexto, fechaCierre, horaCierre, observaciones }) {
+  const jsPDFClass = window.jspdf?.jsPDF;
+  if (!jsPDFClass) {
+    throw new Error('No se pudo cargar la librería jsPDF. Verifica tu conexión a internet.');
+  }
+
+  const doc = new jsPDFClass({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Encabezado
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, pageWidth, 28, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('LEGUEND BARBER STUDIO - REPORTE DE CIERRE DE CAJA', 14, 12);
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Alcance: ${alcanceTexto}`, 14, 21);
+  doc.text(`Fecha de Cierre de Caja: ${fechaCierre}   |   Hora: ${horaCierre}`, pageWidth - 14, 21, { align: 'right' });
+
+  // Resumen financiero
+  const totalGeneral = ventas.reduce((sum, v) => sum + Number(v.total || 0), 0);
+  const totalEfectivo = ventas
+    .filter(v => String(v.metodoPago ?? v.metodo_pago).toLowerCase() === 'efectivo')
+    .reduce((sum, v) => sum + Number(v.total || 0), 0);
+  const totalTransferencia = ventas
+    .filter(v => String(v.metodoPago ?? v.metodo_pago).toLowerCase() === 'transferencia')
+    .reduce((sum, v) => sum + Number(v.total || 0), 0);
+  const totalOtros = Math.max(0, totalGeneral - totalEfectivo - totalTransferencia);
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RESUMEN DE CAJA', 14, 36);
+
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Total de Ventas: ${ventas.length}`, 14, 42);
+  doc.text(`Efectivo: $${totalEfectivo.toFixed(2)}`, 68, 42);
+  doc.text(`Transferencia: $${totalTransferencia.toFixed(2)}`, 118, 42);
+  if (totalOtros > 0) {
+    doc.text(`Otros: $${totalOtros.toFixed(2)}`, 178, 42);
+  }
+  doc.setFont('helvetica', 'bold');
+  doc.text(`TOTAL CIERRE: $${totalGeneral.toFixed(2)}`, pageWidth - 14, 42, { align: 'right' });
+
+  let startYTable = 48;
+  if (observaciones && observaciones.trim() !== '') {
+    doc.setFont('helvetica', 'bold');
+    doc.text('Observaciones:', 14, 48);
+    doc.setFont('helvetica', 'normal');
+    doc.text(observaciones.trim(), 42, 48);
+    startYTable = 54;
+  }
+
+  // Filas de ventas
+  const filas = ventas.map((v, idx) => {
+    const sucId = v.sucursalId ?? v.sucursal_id;
+    const cliId = v.clienteId ?? v.cliente_id;
+    const estId = v.estilistaId ?? v.estilista_id;
+    const metodo = v.metodoPago ?? v.metodo_pago ?? 'N/A';
+
+    const sucNombre = appData.sucursales.find(s => String(s.id) === String(sucId))?.nombre || sucId || 'N/A';
+    const cliNombre = appData.clientes.find(c => String(c.id) === String(cliId))?.nombre || 'Ocasional';
+    const estNombre = appData.estilistas.find(e => String(e.id) === String(estId))?.nombre || 'Sin Asignar';
+    const detalle = Array.isArray(v.items) && v.items.length > 0
+      ? v.items.map(i => `${i.cantidad}x ${i.nombre} ($${Number(i.precio || 0).toFixed(2)})`).join(', ')
+      : 'Sin detalle de ítems';
+
+    return [
+      String(idx + 1),
+      v.fecha || '',
+      sucNombre,
+      cliNombre,
+      estNombre,
+      detalle,
+      metodo,
+      `$${Number(v.total || 0).toFixed(2)}`
+    ];
+  });
+
+  if (typeof doc.autoTable === 'function') {
+    doc.autoTable({
+      startY: startYTable,
+      head: [['#', 'Fecha Venta', 'Sucursal', 'Cliente', 'Estilista', 'Detalle', 'Método Pago', 'Total']],
+      body: filas,
+      foot: [['', '', '', '', '', '', 'TOTAL GENERAL:', `$${totalGeneral.toFixed(2)}`]],
+      theme: 'grid',
+      styles: { fontSize: 8.5, cellPadding: 2.5, overflow: 'linebreak' },
+      headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: 'bold' },
+      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 10, halign: 'center' },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 34 },
+        3: { cellWidth: 36 },
+        4: { cellWidth: 34 },
+        5: { cellWidth: 85 },
+        6: { cellWidth: 26 },
+        7: { cellWidth: 26, halign: 'right' }
+      }
+    });
+  } else {
+    let y = startYTable + 6;
+    doc.setFontSize(8.5);
+    filas.forEach(f => {
+      doc.text(`${f[0]} | ${f[1]} | ${f[2]} | ${f[3]} | ${f[6]} | ${f[7]}`, 14, y);
+      y += 6;
+    });
+  }
+
+  const slugAlcance = alcanceTexto.replace(/[^a-zA-Z0-9_-]+/g, '_');
+  const nombreArchivo = `Cierre_Caja_${slugAlcance}_${fechaCierre}.pdf`;
+  doc.save(nombreArchivo);
+}
+
+async function ejecutarCierreCaja() {
+  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
+
+  const btnConfirmar = document.getElementById('btnConfirmarCierreCaja');
+  const alcance = document.getElementById('alcanceCierreCaja')?.value || 'sucursal';
+  const fechaCierre = document.getElementById('cierreFechaInput')?.value || new Date().toISOString().split('T')[0];
+  const observaciones = document.getElementById('cierreObservaciones')?.value || '';
+  const horaCierre = new Date().toLocaleTimeString('es-EC', { hour12: false });
+
+  const ventasAEliminar = obtenerVentasParaCierre(alcance);
+  if (ventasAEliminar.length === 0) {
+    cerrarModal('modalCierreCaja');
+    return alert('No hay ventas para cerrar.');
+  }
+
+  const confirmacionFinal = confirm(
+    `¿Confirmas el cierre de caja con fecha ${fechaCierre}?\n\n` +
+    `• Se generará el PDF de ${ventasAEliminar.length} venta(s).\n` +
+    `• Se ELIMINARÁ permanentemente este historial de ventas de la base de datos.`
+  );
+  if (!confirmacionFinal) return;
+
+  try {
+    if (btnConfirmar) btnConfirmar.disabled = true;
+
+    // 1. Generar y descargar PDF antes de borrar
+    generarPDFCierreCaja({
+      ventas: ventasAEliminar,
+      alcanceTexto: obtenerDescripcionAlcanceCierre(alcance),
+      fechaCierre,
+      horaCierre,
+      observaciones
+    });
+
+    // 2. Eliminar ventas en Supabase
+    if (alcance === 'todas') {
+      const ids = ventasAEliminar.map(v => v.id).filter(Boolean);
+      if (ids.length > 0) {
+        const { error } = await supabaseClient.from('ventas').delete().in('id', ids);
+        if (error) {
+          const { error: errFallback } = await supabaseClient.from('ventas').delete().neq('id', '');
+          if (errFallback) throw errFallback;
+        }
+      }
+      appData.ventas = [];
+    } else {
+      const sucId = appData.sucursalActiva;
+      const { error } = await supabaseClient.from('ventas').delete().eq('sucursal_id', sucId);
+      if (error) {
+        const idsSuc = ventasAEliminar.map(v => v.id).filter(Boolean);
+        const { error: errById } = await supabaseClient.from('ventas').delete().in('id', idsSuc);
+        if (errById) throw errById;
+      }
+      appData.ventas = appData.ventas.filter(
+        v => String(v.sucursalId ?? v.sucursal_id) !== String(sucId)
+      );
+    }
+
+    cerrarModal('modalCierreCaja');
+    renderizarSuperAdmin();
+    renderizarDashboard();
+    actualizarGraficosSuperAdmin();
+    renderizarEstilistasSuperAdmin();
+
+    alert(`Cierre de caja (${fechaCierre}) completado. Se descargó el PDF y se limpió el historial de ventas.`);
+  } catch (err) {
+    console.error('Error durante el cierre de caja:', err);
+    alert(`Ocurrió un error al cerrar la caja: ${err.message || err}`);
+  } finally {
+    if (btnConfirmar) btnConfirmar.disabled = false;
   }
 }
 
@@ -412,7 +731,7 @@ function renderizarEstilistasSuperAdmin() {
   const ventasFiltradas = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
   const estilistasFiltrados = filtroSucursal === 'todas'
     ? appData.estilistas
-    : appData.estilistas.filter(e => e.sucursalId === filtroSucursal);
+    : appData.estilistas.filter(e => String(e.sucursalId) === String(filtroSucursal));
 
   if (estilistasFiltrados.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" class="text-center">No hay estilistas registrados en esta selección</td></tr>`;
@@ -420,8 +739,8 @@ function renderizarEstilistasSuperAdmin() {
   }
 
   tbody.innerHTML = estilistasFiltrados.map(e => {
-    const suc = appData.sucursales.find(s => s.id === e.sucursalId);
-    const ventasEst = ventasFiltradas.filter(v => (v.estilistaId || v.estilista_id) === e.id);
+    const suc = appData.sucursales.find(s => String(s.id) === String(e.sucursalId));
+    const ventasEst = ventasFiltradas.filter(v => String(v.estilistaId || v.estilista_id) === String(e.id));
     const totalGenerado = ventasEst.reduce((sum, v) => sum + v.total, 0);
 
     return `
@@ -460,10 +779,10 @@ function renderizarSuperAdmin() {
   document.getElementById('gananciasTotalesCadena').innerText = `$${totalCadena.toFixed(2)}`;
 
   container.innerHTML = appData.sucursales.map(s => {
-    const ventasSuc = ventasGlobales.filter(v => v.sucursalId === s.id);
+    const ventasSuc = ventasGlobales.filter(v => String(v.sucursalId) === String(s.id));
     const totalSucursal = ventasSuc.reduce((sum, v) => sum + v.total, 0);
-    const numEstilistas = appData.estilistas.filter(e => e.sucursalId === s.id).length;
-    const productosSuc = appData.productos.filter(p => p.sucursalId === s.id);
+    const numEstilistas = appData.estilistas.filter(e => String(e.sucursalId) === String(s.id)).length;
+    const productosSuc = appData.productos.filter(p => String(p.sucursalId) === String(s.id));
     const stockBajoSuc = productosSuc.filter(p => p.stock <= 5).length;
     const totalStock = productosSuc.reduce((sum, p) => sum + p.stock, 0);
 
@@ -559,7 +878,7 @@ function actualizarGraficosSuperAdmin() {
 
   let ventasFiltradas = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
   if (filtroSucursal !== 'todas') {
-    ventasFiltradas = ventasFiltradas.filter(v => v.sucursalId === filtroSucursal);
+    ventasFiltradas = ventasFiltradas.filter(v => String(v.sucursalId) === String(filtroSucursal));
   }
 
   if (window.repChart1) window.repChart1.destroy();
@@ -580,11 +899,11 @@ function actualizarGraficosSuperAdmin() {
 
   const estilistasSucursal = filtroSucursal === 'todas' 
     ? appData.estilistas 
-    : appData.estilistas.filter(e => e.sucursalId === filtroSucursal);
+    : appData.estilistas.filter(e => String(e.sucursalId) === String(filtroSucursal));
 
   const ventasPorEstilista = estilistasSucursal.map(e => {
     return ventasFiltradas
-      .filter(v => (v.estilistaId || v.estilista_id) === e.id)
+      .filter(v => String(v.estilistaId || v.estilista_id) === String(e.id))
       .reduce((sum, v) => sum + v.total, 0);
   });
 
@@ -629,7 +948,7 @@ function actualizarGraficosSuperAdmin() {
 function renderizarPOS() {
   const grid = document.getElementById('posCatalogGrid');
   if (!grid) return;
-  const prods = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva);
+  const prods = appData.productos.filter(p => String(p.sucursalId) === String(appData.sucursalActiva));
   grid.innerHTML = [...appData.servicios, ...prods].map(i => `
     <div class="pos-item-card" onclick="agregarAlCarrito('${i.id}')">
       <strong>${i.nombre}</strong>
@@ -643,7 +962,7 @@ function filtrarPOSCatalog(tipo, btn) {
   document.querySelectorAll('.pos-tabs .tab-link').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const grid = document.getElementById('posCatalogGrid');
-  const prods = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva);
+  const prods = appData.productos.filter(p => String(p.sucursalId) === String(appData.sucursalActiva));
   let items = [...appData.servicios, ...prods];
   if (tipo !== 'todos') items = items.filter(i => i.tipo === tipo);
   grid.innerHTML = items.map(i => `
@@ -655,7 +974,7 @@ function filtrarPOSCatalog(tipo, btn) {
 }
 
 function agregarAlCarrito(id) {
-  const prods = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva);
+  const prods = appData.productos.filter(p => String(p.sucursalId) === String(appData.sucursalActiva));
   const item = [...appData.servicios, ...prods].find(i => i.id === id);
   if (!item) return;
   const existe = carritoPOS.find(i => i.id === id);
@@ -710,7 +1029,6 @@ function formatearTelefonoWhatsApp(telefono) {
   return limpio;
 }
 
-// Búsqueda dinámica de clientes en Caja & POS
 function filtrarClientesPOS(query) {
   const dropdown = document.getElementById('posClientDropdown');
   if (!dropdown) return;
@@ -771,7 +1089,16 @@ async function actualizarFidelidadCliente(clienteId, nuevosServicios) {
   if (!cliente) return false;
 
   const actual = cliente.serviciosAcumulados || 0;
-  const totalAcumulado = Math.min(META_SERVICIOS_GRATIS, actual + nuevosServicios);
+  let totalAcumulado;
+
+  if (actual >= META_SERVICIOS_GRATIS) {
+    totalAcumulado = nuevosServicios >= META_SERVICIOS_GRATIS 
+      ? META_SERVICIOS_GRATIS 
+      : nuevosServicios;
+  } else {
+    totalAcumulado = Math.min(META_SERVICIOS_GRATIS, actual + nuevosServicios);
+  }
+
   cliente.serviciosAcumulados = totalAcumulado;
 
   localStorage.setItem(`fidelidad_${clienteId}`, totalAcumulado.toString());
@@ -840,8 +1167,8 @@ function enviarWhatsAppAgradecimiento(venta) {
   const telefonoWA = formatearTelefonoWhatsApp(clienteObj.telefono);
   if (!telefonoWA) return;
 
-  const sucursalObj = appData.sucursales.find(s => s.id === (venta.sucursalId || venta.sucursal_id));
-  const estilistaObj = appData.estilistas.find(e => e.id === (venta.estilistaId || venta.estilista_id));
+  const sucursalObj = appData.sucursales.find(s => String(s.id) === String(venta.sucursalId || venta.sucursal_id));
+  const estilistaObj = appData.estilistas.find(e => String(e.id) === String(venta.estilistaId || venta.estilista_id));
 
   const nombreCliente = clienteObj.nombre;
   const nombreSucursal = sucursalObj ? sucursalObj.nombre : 'Leguend Barber Studio';
@@ -857,7 +1184,7 @@ function enviarWhatsAppAgradecimiento(venta) {
 
   const textoFidelidad = acumulados >= META_SERVICIOS_GRATIS
     ? `\n🎁 *¡FELICIDADES! Completaste ${acumulados}/8 servicios (100%) y GANASTE UN CORTE GRATIS en tu próxima visita.* 🎉`
-    : `\n⭐ *Progreso Corte Gratis:* ${acumulados}/8 servicios (${porcentaje}%)`;
+    : `\n⭐ *Progreso Corte Gratis:* ${acumulados}/8 servicios (${porcentaje}%)\n* Caducidad del premio* (En 6 meses desde su ultimo servicio) `;
 
   const mensaje = 
 `✂️ *LEGUEND BARBER STUDIO* 💈
@@ -931,13 +1258,13 @@ async function procesarPagoPOS() {
 }
 
 function mostrarTicket(v, ganoPremio = false) {
-  document.getElementById('ticketSucursal').innerText = appData.sucursales.find(s => s.id === (v.sucursalId || v.sucursal_id))?.nombre || '';
+  document.getElementById('ticketSucursal').innerText = appData.sucursales.find(s => String(s.id) === String(v.sucursalId || v.sucursal_id))?.nombre || '';
   document.getElementById('ticketFechaHora').innerText = v.fecha;
   
   const clienteId = v.clienteId || v.cliente_id;
   const clienteObj = appData.clientes.find(c => c.id === clienteId);
   document.getElementById('ticketCliente').innerText = clienteObj?.nombre || 'General';
-  document.getElementById('ticketEstilista').innerText = appData.estilistas.find(e => e.id === (v.estilistaId || v.estilista_id))?.nombre || 'General';
+  document.getElementById('ticketEstilista').innerText = appData.estilistas.find(e => String(e.id) === String(v.estilistaId || v.estilista_id))?.nombre || 'General';
   document.getElementById('ticketMetodo').innerText = v.metodoPago || v.metodo_pago;
   document.getElementById('ticketTotal').innerText = v.total.toFixed(2);
 
@@ -973,8 +1300,8 @@ function reimprimirTicket(id) {
 function renderizarEstilistas() {
   const container = document.getElementById('listaEstilistas');
   if (!container) return;
-  const estSuc = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva);
-  container.innerHTML = estSuc.length === 0 ? '<p>No hay estilistas.</p>' : estSuc.map(e => `
+  const estSuc = appData.estilistas.filter(e => String(e.sucursalId) === String(appData.sucursalActiva));
+  container.innerHTML = estSuc.length === 0 ? '<p>No hay estilistas en esta sucursal.</p>' : estSuc.map(e => `
     <div class="card text-center">
       <h3>${e.nombre}</h3>
       <p>Cédula: ${e.cedula || 'N/A'}</p>
@@ -1067,7 +1394,7 @@ function cambiarTabInventario(tab, btn) {
 function renderizarInventario() {
   const tbody = document.getElementById('listaProductos');
   if (!tbody) return;
-  tbody.innerHTML = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva).map(p => `
+  tbody.innerHTML = appData.productos.filter(p => String(p.sucursalId) === String(appData.sucursalActiva)).map(p => `
     <tr>
       <td>${p.nombre}</td>
       <td>${p.categoria}</td>
@@ -1373,7 +1700,7 @@ function abrirModalSucursal() {
 
 function poblarSelects() {
   const posEst = document.getElementById('posEstilista');
-  const estSuc = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva);
+  const estSuc = appData.estilistas.filter(e => String(e.sucursalId) === String(appData.sucursalActiva));
 
   const buscadorCli = document.getElementById('posBuscadorCliente');
   const inputIdCli = document.getElementById('posClienteIdSeleccionado');
@@ -1409,8 +1736,15 @@ function obtenerFechaArchivo() {
   return new Date().toISOString().split('T')[0];
 }
 
-// 1. Exportar Clientes
+function determinarTipoItemVenta(item) {
+  if (item.tipo === 'producto' || item.tipo === 'servicio') return item.tipo;
+  if (appData.productos.some(p => p.id === item.id)) return 'producto';
+  if (appData.servicios.some(s => s.id === item.id)) return 'servicio';
+  return 'servicio';
+}
+
 function exportarExcelClientes() {
+  if (!esSuperAdmin) return alert('Requiere permisos de Super Admin');
   if (!verificarLibreriaExcel()) return;
   if (appData.clientes.length === 0) return alert('No hay clientes registrados para exportar.');
 
@@ -1435,17 +1769,16 @@ function exportarExcelClientes() {
   XLSX.writeFile(wb, `Clientes_LeguendBarber_${obtenerFechaArchivo()}.xlsx`);
 }
 
-// 2. Exportar Estilistas (Módulo General)
 function exportarExcelEstilistas() {
   if (!verificarLibreriaExcel()) return;
   if (appData.estilistas.length === 0) return alert('No hay estilistas registrados para exportar.');
 
-  const sucActiva = appData.sucursales.find(s => s.id === appData.sucursalActiva);
+  const sucActiva = appData.sucursales.find(s => String(s.id) === String(appData.sucursalActiva));
 
   const mapearEstilista = (e) => {
-    const suc = appData.sucursales.find(s => s.id === e.sucursalId);
+    const suc = appData.sucursales.find(s => String(s.id) === String(e.sucursalId));
     const totalVentas = appData.ventas
-      .filter(v => (v.estilistaId || v.estilista_id) === e.id)
+      .filter(v => String(v.estilistaId || v.estilista_id) === String(e.id))
       .reduce((sum, v) => sum + v.total, 0);
 
     return {
@@ -1461,7 +1794,7 @@ function exportarExcelEstilistas() {
 
   const wb = XLSX.utils.book_new();
 
-  const estSucursal = appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva).map(mapearEstilista);
+  const estSucursal = appData.estilistas.filter(e => String(e.sucursalId) === String(appData.sucursalActiva)).map(mapearEstilista);
   if (estSucursal.length > 0) {
     const wsSuc = XLSX.utils.json_to_sheet(estSucursal);
     XLSX.utils.book_append_sheet(wb, wsSuc, (sucActiva?.nombre || 'Sucursal Actual').substring(0, 31));
@@ -1474,15 +1807,14 @@ function exportarExcelEstilistas() {
   XLSX.writeFile(wb, `Estilistas_LeguendBarber_${obtenerFechaArchivo()}.xlsx`);
 }
 
-// 3. Exportar Inventario de Productos
 function exportarExcelInventario() {
   if (!verificarLibreriaExcel()) return;
   if (appData.productos.length === 0) return alert('No hay productos registrados para exportar.');
 
-  const sucActiva = appData.sucursales.find(s => s.id === appData.sucursalActiva);
+  const sucActiva = appData.sucursales.find(s => String(s.id) === String(appData.sucursalActiva));
 
   const mapearProducto = (p) => {
-    const suc = appData.sucursales.find(s => s.id === p.sucursalId);
+    const suc = appData.sucursales.find(s => String(s.id) === String(p.sucursalId));
     return {
       'ID': p.id,
       'Producto': p.nombre,
@@ -1497,7 +1829,7 @@ function exportarExcelInventario() {
 
   const wb = XLSX.utils.book_new();
 
-  const prodsSuc = appData.productos.filter(p => p.sucursalId === appData.sucursalActiva).map(mapearProducto);
+  const prodsSuc = appData.productos.filter(p => String(p.sucursalId) === String(appData.sucursalActiva)).map(mapearProducto);
   if (prodsSuc.length > 0) {
     const wsSuc = XLSX.utils.json_to_sheet(prodsSuc);
     XLSX.utils.book_append_sheet(wb, wsSuc, (sucActiva?.nombre || 'Sucursal Actual').substring(0, 31));
@@ -1510,7 +1842,6 @@ function exportarExcelInventario() {
   XLSX.writeFile(wb, `Inventario_LeguendBarber_${obtenerFechaArchivo()}.xlsx`);
 }
 
-// 4. Exportar Catálogo de Servicios
 function exportarExcelServicios() {
   if (!verificarLibreriaExcel()) return;
   if (appData.servicios.length === 0) return alert('No hay servicios registrados para exportar.');
@@ -1528,11 +1859,6 @@ function exportarExcelServicios() {
   XLSX.writeFile(wb, `Servicios_LeguendBarber_${obtenerFechaArchivo()}.xlsx`);
 }
 
-/* =========================================================
-   BOTONES EXCEL INDIVIDUALES DE SUPER ADMIN
-   ========================================================= */
-
-// A. Super Admin -> Control por Sucursales
 function exportarExcelControlSucursales() {
   if (!verificarLibreriaExcel()) return;
 
@@ -1541,10 +1867,10 @@ function exportarExcelControlSucursales() {
   const ventasFiltradas = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
 
   const resumen = appData.sucursales.map(s => {
-    const ventasSuc = ventasFiltradas.filter(v => v.sucursalId === s.id);
+    const ventasSuc = ventasFiltradas.filter(v => String(v.sucursalId) === String(s.id));
     const totalVentas = ventasSuc.reduce((sum, v) => sum + v.total, 0);
-    const numEstilistas = appData.estilistas.filter(e => e.sucursalId === s.id).length;
-    const prodsSuc = appData.productos.filter(p => p.sucursalId === s.id);
+    const numEstilistas = appData.estilistas.filter(e => String(e.sucursalId) === String(s.id)).length;
+    const prodsSuc = appData.productos.filter(p => String(p.sucursalId) === String(s.id));
     const totalUnidades = prodsSuc.reduce((sum, p) => sum + p.stock, 0);
     const stockBajo = prodsSuc.filter(p => p.stock <= 5).length;
     const valorInventario = prodsSuc.reduce((sum, p) => sum + (p.precio * p.stock), 0);
@@ -1564,9 +1890,9 @@ function exportarExcelControlSucursales() {
   });
 
   const detalleVentas = ventasFiltradas.map(v => {
-    const suc = appData.sucursales.find(s => s.id === (v.sucursalId || v.sucursal_id));
+    const suc = appData.sucursales.find(s => String(s.id) === String(v.sucursalId || v.sucursal_id));
     const cli = appData.clientes.find(c => c.id === (v.clienteId || v.cliente_id));
-    const est = appData.estilistas.find(e => e.id === (v.estilistaId || v.estilista_id));
+    const est = appData.estilistas.find(e => String(e.id) === String(v.estilistaId || v.estilista_id));
     return {
       'Fecha': v.fecha,
       'Sucursal': suc ? suc.nombre : (v.sucursalId || 'N/A'),
@@ -1587,7 +1913,6 @@ function exportarExcelControlSucursales() {
   XLSX.writeFile(wb, `Control_Sucursales_${obtenerFechaArchivo()}.xlsx`);
 }
 
-// B. Super Admin -> Dashboard & Facturación
 function exportarExcelDashboardFacturacion() {
   if (!verificarLibreriaExcel()) return;
 
@@ -1595,8 +1920,8 @@ function exportarExcelDashboardFacturacion() {
   const fechaFin = document.getElementById('dashFechaFin')?.value || '';
   const hayFiltroFecha = Boolean(fechaInicio || fechaFin);
 
-  const sucActiva = appData.sucursales.find(s => s.id === appData.sucursalActiva);
-  const ventasSucBase = appData.ventas.filter(v => v.sucursalId === appData.sucursalActiva);
+  const sucActiva = appData.sucursales.find(s => String(s.id) === String(appData.sucursalActiva));
+  const ventasSucBase = appData.ventas.filter(v => String(v.sucursalId) === String(appData.sucursalActiva));
   const ventasSuc = hayFiltroFecha
     ? filtrarVentasPorRango(ventasSucBase, fechaInicio, fechaFin)
     : ventasSucBase;
@@ -1612,13 +1937,13 @@ function exportarExcelDashboardFacturacion() {
     'Ingresos Efectivo ($)': Number(totalEfectivo.toFixed(2)),
     'Ingresos Transferencia ($)': Number(totalTransferencia.toFixed(2)),
     'Ingresos Totales ($)': Number(totalIngresos.toFixed(2)),
-    'Estilistas Activos': appData.estilistas.filter(e => e.sucursalId === appData.sucursalActiva).length,
-    'Productos Stock Bajo': appData.productos.filter(p => p.sucursalId === appData.sucursalActiva && p.stock <= 5).length
+    'Estilistas Activos': appData.estilistas.filter(e => String(e.sucursalId) === String(appData.sucursalActiva)).length,
+    'Productos Stock Bajo': appData.productos.filter(p => String(p.sucursalId) === String(appData.sucursalActiva) && p.stock <= 5).length
   }];
 
   const facturas = ventasSuc.slice().reverse().map(v => {
     const cli = appData.clientes.find(c => c.id === (v.clienteId || v.cliente_id));
-    const est = appData.estilistas.find(e => e.id === (v.estilistaId || v.estilista_id));
+    const est = appData.estilistas.find(e => String(e.id) === String(v.estilistaId || v.estilista_id));
     const detalle = Array.isArray(v.items)
       ? v.items.map(i => `${i.cantidad}x ${i.nombre}`).join(', ')
       : '';
@@ -1644,7 +1969,145 @@ function exportarExcelDashboardFacturacion() {
   XLSX.writeFile(wb, `Facturacion_${(sucActiva?.nombre || 'Sucursal').replace(/\s+/g, '_')}_${obtenerFechaArchivo()}.xlsx`);
 }
 
-// C. Super Admin -> Reportes & Estadísticas
+function exportarExcelDashboardProductos() {
+  if (!verificarLibreriaExcel()) return;
+
+  const fechaInicio = document.getElementById('dashFechaInicio')?.value || '';
+  const fechaFin = document.getElementById('dashFechaFin')?.value || '';
+  const hayFiltroFecha = Boolean(fechaInicio || fechaFin);
+
+  const sucActiva = appData.sucursales.find(s => String(s.id) === String(appData.sucursalActiva));
+  const ventasSucBase = appData.ventas.filter(v => String(v.sucursalId) === String(appData.sucursalActiva));
+  const ventasSuc = hayFiltroFecha
+    ? filtrarVentasPorRango(ventasSucBase, fechaInicio, fechaFin)
+    : ventasSucBase;
+
+  const detalleProductos = [];
+  const resumenPorProducto = {};
+
+  ventasSuc.forEach(v => {
+    if (!Array.isArray(v.items)) return;
+    const cli = appData.clientes.find(c => c.id === (v.clienteId || v.cliente_id));
+    const est = appData.estilistas.find(e => String(e.id) === String(v.estilistaId || v.estilista_id));
+
+    v.items.forEach(item => {
+      if (determinarTipoItemVenta(item) !== 'producto') return;
+      const subtotal = Number((item.precio * item.cantidad).toFixed(2));
+      const prodCatalogo = appData.productos.find(p => p.id === item.id);
+
+      detalleProductos.push({
+        'ID Factura': v.id,
+        'Fecha': v.fecha,
+        'Sucursal': sucActiva ? sucActiva.nombre : appData.sucursalActiva,
+        'Producto': item.nombre,
+        'Categoría': item.categoria || prodCatalogo?.categoria || 'General',
+        'Cantidad': item.cantidad,
+        'Precio Unitario ($)': Number(item.precio.toFixed(2)),
+        'Subtotal ($)': subtotal,
+        'Cliente': cli ? cli.nombre : 'Ocasional',
+        'Estilista': est ? est.nombre : 'Sin Asignar',
+        'Método de Pago': v.metodoPago || v.metodo_pago
+      });
+
+      if (!resumenPorProducto[item.nombre]) {
+        resumenPorProducto[item.nombre] = {
+          'Producto': item.nombre,
+          'Categoría': item.categoria || prodCatalogo?.categoria || 'General',
+          'Unidades Vendidas': 0,
+          'Total Facturado ($)': 0
+        };
+      }
+      resumenPorProducto[item.nombre]['Unidades Vendidas'] += item.cantidad;
+      resumenPorProducto[item.nombre]['Total Facturado ($)'] = Number(
+        (resumenPorProducto[item.nombre]['Total Facturado ($)'] + subtotal).toFixed(2)
+      );
+    });
+  });
+
+  const resumenArray = Object.values(resumenPorProducto);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(resumenArray.length ? resumenArray : [{ Mensaje: 'Sin ventas de productos en el rango seleccionado' }]),
+    'Resumen Productos'
+  );
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(detalleProductos.length ? detalleProductos : [{ Mensaje: 'Sin detalle de productos en el rango seleccionado' }]),
+    'Facturación Productos'
+  );
+  XLSX.writeFile(wb, `Facturacion_Productos_${(sucActiva?.nombre || 'Sucursal').replace(/\s+/g, '_')}_${obtenerFechaArchivo()}.xlsx`);
+}
+
+function exportarExcelDashboardServicios() {
+  if (!verificarLibreriaExcel()) return;
+
+  const fechaInicio = document.getElementById('dashFechaInicio')?.value || '';
+  const fechaFin = document.getElementById('dashFechaFin')?.value || '';
+  const hayFiltroFecha = Boolean(fechaInicio || fechaFin);
+
+  const sucActiva = appData.sucursales.find(s => String(s.id) === String(appData.sucursalActiva));
+  const ventasSucBase = appData.ventas.filter(v => String(v.sucursalId) === String(appData.sucursalActiva));
+  const ventasSuc = hayFiltroFecha
+    ? filtrarVentasPorRango(ventasSucBase, fechaInicio, fechaFin)
+    : ventasSucBase;
+
+  const detalleServicios = [];
+  const resumenPorServicio = {};
+
+  ventasSuc.forEach(v => {
+    if (!Array.isArray(v.items)) return;
+    const cli = appData.clientes.find(c => c.id === (v.clienteId || v.cliente_id));
+    const est = appData.estilistas.find(e => String(e.id) === String(v.estilistaId || v.estilista_id));
+
+    v.items.forEach(item => {
+      if (determinarTipoItemVenta(item) !== 'servicio') return;
+      const subtotal = Number((item.precio * item.cantidad).toFixed(2));
+
+      detalleServicios.push({
+        'ID Factura': v.id,
+        'Fecha': v.fecha,
+        'Sucursal': sucActiva ? sucActiva.nombre : appData.sucursalActiva,
+        'Servicio': item.nombre,
+        'Cantidad': item.cantidad,
+        'Precio Unitario ($)': Number(item.precio.toFixed(2)),
+        'Subtotal ($)': subtotal,
+        'Cliente': cli ? cli.nombre : 'Ocasional',
+        'Estilista': est ? est.nombre : 'Sin Asignar',
+        'Método de Pago': v.metodoPago || v.metodo_pago
+      });
+
+      if (!resumenPorServicio[item.nombre]) {
+        resumenPorServicio[item.nombre] = {
+          'Servicio': item.nombre,
+          'Cantidad Realizada': 0,
+          'Total Facturado ($)': 0
+        };
+      }
+      resumenPorServicio[item.nombre]['Cantidad Realizada'] += item.cantidad;
+      resumenPorServicio[item.nombre]['Total Facturado ($)'] = Number(
+        (resumenPorServicio[item.nombre]['Total Facturado ($)'] + subtotal).toFixed(2)
+      );
+    });
+  });
+
+  const resumenArray = Object.values(resumenPorServicio);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(resumenArray.length ? resumenArray : [{ Mensaje: 'Sin ventas de servicios en el rango seleccionado' }]),
+    'Resumen Servicios'
+  );
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(detalleServicios.length ? detalleServicios : [{ Mensaje: 'Sin detalle de servicios en el rango seleccionado' }]),
+    'Facturación Servicios'
+  );
+  XLSX.writeFile(wb, `Facturacion_Servicios_${(sucActiva?.nombre || 'Sucursal').replace(/\s+/g, '_')}_${obtenerFechaArchivo()}.xlsx`);
+}
+
 function exportarExcelReportesEstadisticas() {
   if (!verificarLibreriaExcel()) return;
 
@@ -1654,24 +2117,22 @@ function exportarExcelReportesEstadisticas() {
 
   let ventasFiltradas = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
   if (filtroSucursal !== 'todas') {
-    ventasFiltradas = ventasFiltradas.filter(v => v.sucursalId === filtroSucursal);
+    ventasFiltradas = ventasFiltradas.filter(v => String(v.sucursalId) === String(filtroSucursal));
   }
 
-  // Hoja 1: Servicios Más Solicitados
   const hojaServicios = appData.servicios.map(s => ({
     'Servicio': s.nombre,
     'Precio ($)': Number(s.precio.toFixed(2)),
     'Cantidad Usos': s.usosCount || 0
   }));
 
-  // Hoja 2: Ventas por Estilista
   const estilistasSuc = filtroSucursal === 'todas'
     ? appData.estilistas
-    : appData.estilistas.filter(e => e.sucursalId === filtroSucursal);
+    : appData.estilistas.filter(e => String(e.sucursalId) === String(filtroSucursal));
 
   const hojaEstilistas = estilistasSuc.map(e => {
-    const suc = appData.sucursales.find(s => s.id === e.sucursalId);
-    const ventasEst = ventasFiltradas.filter(v => (v.estilistaId || v.estilista_id) === e.id);
+    const suc = appData.sucursales.find(s => String(s.id) === String(e.sucursalId));
+    const ventasEst = ventasFiltradas.filter(v => String(v.estilistaId || v.estilista_id) === String(e.id));
     const total = ventasEst.reduce((sum, v) => sum + v.total, 0);
     return {
       'Estilista': e.nombre,
@@ -1682,7 +2143,6 @@ function exportarExcelReportesEstadisticas() {
     };
   });
 
-  // Hoja 3: Ingresos por Fecha
   const ventasPorFecha = {};
   ventasFiltradas.forEach(v => {
     ventasPorFecha[v.fecha] = (ventasPorFecha[v.fecha] || 0) + v.total;
@@ -1699,7 +2159,6 @@ function exportarExcelReportesEstadisticas() {
   XLSX.writeFile(wb, `Reportes_Estadisticas_${obtenerFechaArchivo()}.xlsx`);
 }
 
-// D. Super Admin -> Estilistas
 function exportarExcelEstilistasSuperAdmin() {
   if (!verificarLibreriaExcel()) return;
 
@@ -1710,13 +2169,13 @@ function exportarExcelEstilistasSuperAdmin() {
   const ventasFiltradas = filtrarVentasPorRango(appData.ventas, fechaInicio, fechaFin);
   const estilistasFiltrados = filtroSucursal === 'todas'
     ? appData.estilistas
-    : appData.estilistas.filter(e => e.sucursalId === filtroSucursal);
+    : appData.estilistas.filter(e => String(e.sucursalId) === String(filtroSucursal));
 
   if (estilistasFiltrados.length === 0) return alert('No hay estilistas en la selección actual para exportar.');
 
   const datos = estilistasFiltrados.map(e => {
-    const suc = appData.sucursales.find(s => s.id === e.sucursalId);
-    const ventasEst = ventasFiltradas.filter(v => (v.estilistaId || v.estilista_id) === e.id);
+    const suc = appData.sucursales.find(s => String(s.id) === String(e.sucursalId));
+    const ventasEst = ventasFiltradas.filter(v => String(v.estilistaId || v.estilista_id) === String(e.id));
     const totalGenerado = ventasEst.reduce((sum, v) => sum + v.total, 0);
 
     return {
@@ -1737,18 +2196,16 @@ function exportarExcelEstilistasSuperAdmin() {
   XLSX.writeFile(wb, `Estilistas_SuperAdmin_${obtenerFechaArchivo()}.xlsx`);
 }
 
-// 5. Exportar Todo (Super Admin: Multi-hoja completo)
 function exportarExcelSuperAdmin() {
   if (!verificarLibreriaExcel()) return;
 
   const wb = XLSX.utils.book_new();
 
-  // Hoja 1: Resumen por Sucursales
   const resumenSucursales = appData.sucursales.map(s => {
-    const ventasSuc = appData.ventas.filter(v => v.sucursalId === s.id);
+    const ventasSuc = appData.ventas.filter(v => String(v.sucursalId) === String(s.id));
     const totalVentas = ventasSuc.reduce((sum, v) => sum + v.total, 0);
-    const numEstilistas = appData.estilistas.filter(e => e.sucursalId === s.id).length;
-    const prodsSuc = appData.productos.filter(p => p.sucursalId === s.id);
+    const numEstilistas = appData.estilistas.filter(e => String(e.sucursalId) === String(s.id)).length;
+    const prodsSuc = appData.productos.filter(p => String(p.sucursalId) === String(s.id));
     const totalUnidades = prodsSuc.reduce((sum, p) => sum + p.stock, 0);
     const valorInventario = prodsSuc.reduce((sum, p) => sum + (p.precio * p.stock), 0);
 
@@ -1765,11 +2222,10 @@ function exportarExcelSuperAdmin() {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenSucursales), 'Resumen Sucursales');
 
-  // Hoja 2: Historial Completo de Ventas / Facturas
   const datosVentas = appData.ventas.map(v => {
-    const suc = appData.sucursales.find(s => s.id === (v.sucursalId || v.sucursal_id));
+    const suc = appData.sucursales.find(s => String(s.id) === String(v.sucursalId || v.sucursal_id));
     const cli = appData.clientes.find(c => c.id === (v.clienteId || v.cliente_id));
-    const est = appData.estilistas.find(e => e.id === (v.estilistaId || v.estilista_id));
+    const est = appData.estilistas.find(e => String(e.id) === String(v.estilistaId || v.estilista_id));
     const detalle = Array.isArray(v.items)
       ? v.items.map(i => `${i.cantidad}x ${i.nombre}`).join(', ')
       : '';
@@ -1791,7 +2247,6 @@ function exportarExcelSuperAdmin() {
     'Ventas y Facturas'
   );
 
-  // Hoja 3: Clientes
   const datosClientes = appData.clientes.map(c => {
     const acum = c.serviciosAcumulados || 0;
     return {
@@ -1810,11 +2265,10 @@ function exportarExcelSuperAdmin() {
     'Clientes'
   );
 
-  // Hoja 4: Estilistas
   const datosEstilistas = appData.estilistas.map(e => {
-    const suc = appData.sucursales.find(s => s.id === e.sucursalId);
+    const suc = appData.sucursales.find(s => String(s.id) === String(e.sucursalId));
     const ventasEst = appData.ventas
-      .filter(v => (v.estilistaId || v.estilista_id) === e.id)
+      .filter(v => String(v.estilistaId || v.estilista_id) === String(e.id))
       .reduce((sum, v) => sum + v.total, 0);
     return {
       'ID': e.id,
@@ -1832,9 +2286,8 @@ function exportarExcelSuperAdmin() {
     'Estilistas'
   );
 
-  // Hoja 5: Inventario Global de Productos
   const datosProductos = appData.productos.map(p => {
-    const suc = appData.sucursales.find(s => s.id === p.sucursalId);
+    const suc = appData.sucursales.find(s => String(s.id) === String(p.sucursalId));
     return {
       'ID': p.id,
       'Producto': p.nombre,
@@ -1851,7 +2304,6 @@ function exportarExcelSuperAdmin() {
     'Inventario Productos'
   );
 
-  // Hoja 6: Catálogo de Servicios
   const datosServicios = appData.servicios.map(s => ({
     'ID': s.id,
     'Servicio': s.nombre,

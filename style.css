@@ -624,7 +624,6 @@ body.light-mode {
   gap: 1.25rem;
 }
 
-/* Estilos para el autocompletado de clientes en POS */
 .client-search-dropdown {
   position: absolute;
   top: 100%;
