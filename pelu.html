@@ -112,7 +112,7 @@
               </div>
             </div>
 
-            <div class="pos-cart">
+            <div class="pos-cart" id="posComprobanteSection">
               <div class="card">
                 <h3>Comprobante de Venta</h3>
                 
@@ -162,6 +162,16 @@
               </div>
             </div>
           </div>
+
+          <!-- BOTÓN FLOTANTE DE CARRITO EN MÓVIL -->
+          <button type="button" id="mobileCartFab" class="mobile-cart-fab" onclick="irAComprobanteVenta()" aria-label="Ir al comprobante de venta">
+            <span class="mobile-cart-fab-left">
+              <i class="fa-solid fa-cart-shopping"></i>
+              <span id="mobileCartCount" class="mobile-cart-badge">0</span>
+              <span>Ver Comprobante</span>
+            </span>
+            <strong id="mobileCartTotal">$0.00</strong>
+          </button>
         </section>
 
         <!-- MODULO: ESTILISTAS -->

@@ -190,15 +190,66 @@ async function inicializarDatosDefault() {
 
 let carritoPOS = [];
 let moduloActual = 'pos';
+let comprobanteVisibleEnPantalla = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
   setupNavegacion();
   setupTema();
+  setupObserverComprobanteMovil();
   await cargarDatosDesdeSupabase();
   renderizarSucursales();
   actualizarVisibilidadBotonesAdmin();
   renderizarModulo('pos');
 });
+
+function setupObserverComprobanteMovil() {
+  const seccionComprobante = document.getElementById('posComprobanteSection');
+  if (!seccionComprobante || !('IntersectionObserver' in window)) return;
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        comprobanteVisibleEnPantalla = entry.isIntersecting;
+        actualizarBotonCarritoMovil();
+      });
+    },
+    { threshold: 0.25 }
+  );
+
+  observer.observe(seccionComprobante);
+}
+
+function actualizarBotonCarritoMovil() {
+  const fab = document.getElementById('mobileCartFab');
+  if (!fab) return;
+
+  const cantidadTotal = carritoPOS.reduce((sum, item) => sum + item.cantidad, 0);
+  const montoTotal = carritoPOS.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
+
+  const badge = document.getElementById('mobileCartCount');
+  const totalEl = document.getElementById('mobileCartTotal');
+  if (badge) badge.innerText = cantidadTotal;
+  if (totalEl) totalEl.innerText = `$${montoTotal.toFixed(2)}`;
+
+  const hayModalAbierto = document.querySelector('.modal.active') !== null;
+
+  if (
+    moduloActual === 'pos' &&
+    cantidadTotal > 0 &&
+    !comprobanteVisibleEnPantalla &&
+    !hayModalAbierto
+  ) {
+    fab.classList.add('visible');
+  } else {
+    fab.classList.remove('visible');
+  }
+}
+
+function irAComprobanteVenta() {
+  const seccion = document.getElementById('posComprobanteSection');
+  if (!seccion) return;
+  seccion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 function setupNavegacion() {
   const navBtns = document.querySelectorAll('.nav-btn');
@@ -380,6 +431,7 @@ function renderizarModulo(modulo) {
     actualizarGraficosSuperAdmin();
     renderizarEstilistasSuperAdmin();
   }
+  actualizarBotonCarritoMovil();
 }
 
 function filtrarVentasPorRango(ventas, fechaInicio, fechaFin) {
@@ -989,6 +1041,7 @@ function renderizarCarritoPOS() {
   if (carritoPOS.length === 0) {
     container.innerHTML = '<p class="empty-msg">No hay ítems</p>';
     document.getElementById('posTotal').innerText = '$0.00';
+    actualizarBotonCarritoMovil();
     return;
   }
   container.innerHTML = carritoPOS.map((i, idx) => `
@@ -999,6 +1052,7 @@ function renderizarCarritoPOS() {
   `).join('');
   const total = carritoPOS.reduce((sum, i) => sum + (i.precio * i.cantidad), 0);
   document.getElementById('posTotal').innerText = `$${total.toFixed(2)}`;
+  actualizarBotonCarritoMovil();
 }
 
 function quitarCarrito(idx) {
@@ -1619,8 +1673,14 @@ async function eliminarCliente(id) {
   }
 }
 
-function abrirModal(id) { document.getElementById(id).classList.add('active'); }
-function cerrarModal(id) { document.getElementById(id).classList.remove('active'); }
+function abrirModal(id) {
+  document.getElementById(id).classList.add('active');
+  actualizarBotonCarritoMovil();
+}
+function cerrarModal(id) {
+  document.getElementById(id).classList.remove('active');
+  actualizarBotonCarritoMovil();
+}
 
 function abrirModalProducto(id = null) {
   if (!esSuperAdmin) return alert('Requiere permisos');

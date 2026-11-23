@@ -36,6 +36,7 @@ html, body {
   height: 100%;
   width: 100%;
   overflow-x: hidden;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -555,6 +556,77 @@ body.light-mode {
   color: var(--emerald);
 }
 
+/* BOTÓN FLOTANTE DE CARRITO EN MÓVIL */
+.mobile-cart-fab {
+  display: none;
+}
+
+.mobile-cart-fab-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.mobile-cart-badge {
+  background-color: #ffffff;
+  color: var(--emerald);
+  font-weight: 800;
+  font-size: 0.8rem;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 1024px) {
+  .pos-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-cart-fab {
+    position: fixed;
+    left: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 95;
+    background: linear-gradient(135deg, var(--emerald), #059669);
+    color: #ffffff;
+    border: none;
+    border-radius: 14px;
+    padding: 0.85rem 1.15rem;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 10px 25px rgba(16, 185, 129, 0.45);
+    cursor: pointer;
+    font-size: 1rem;
+    animation: fabPopIn 0.25s ease-out;
+  }
+
+  .mobile-cart-fab.visible {
+    display: flex;
+  }
+
+  .mobile-cart-fab:active {
+    transform: scale(0.98);
+  }
+}
+
+@keyframes fabPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .badge-status {
   padding: 0.2rem 0.5rem;
   border-radius: 12px;
@@ -661,12 +733,6 @@ body.light-mode {
 
 .client-dropdown-item:last-child {
   border-bottom: none;
-}
-
-@media (max-width: 1024px) {
-  .pos-layout {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 768px) {
