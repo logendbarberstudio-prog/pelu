@@ -75,7 +75,6 @@ async function cargarDatosDesdeSupabase() {
 
     appData.sucursales = resSuc.data;
 
-    // Selecciona 'suc_1' si existe; de lo contrario toma la primera sucursal disponible
     const suc1 = appData.sucursales.find(s => String(s.id) === 'suc_1');
     const activaValida = appData.sucursales.some(s => String(s.id) === String(appData.sucursalActiva));
     if (!activaValida) {
@@ -84,7 +83,6 @@ async function cargarDatosDesdeSupabase() {
 
     let estilistasRaw = resEst.data || [];
 
-    // Si no hay estilistas en la sucursal activa (o en suc_1), inserta por defecto de forma segura
     const idSucursal1 = suc1 ? suc1.id : appData.sucursalActiva;
     const tieneEstilistasSuc1 = estilistasRaw.some(
       e => String(e.sucursal_id ?? e.sucursalId ?? '') === String(idSucursal1)
@@ -202,26 +200,54 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderizarModulo('pos');
 });
 
+/* =========================================================
+   BOTÓN DE CARRITO / COMPROBANTE (MÓVIL, TABLET Y PC)
+   ========================================================= */
+
+function evaluarVisibilidadComprobante() {
+  const seccion = document.getElementById('posComprobanteSection');
+  if (!seccion || moduloActual !== 'pos') {
+    comprobanteVisibleEnPantalla = false;
+    return;
+  }
+
+  const rect = seccion.getBoundingClientRect();
+  const viewHeight = window.innerHeight || document.documentElement.clientHeight;
+  const visibleHeight = Math.min(rect.bottom, viewHeight) - Math.max(rect.top, 0);
+  comprobanteVisibleEnPantalla = visibleHeight >= Math.min(rect.height * 0.35, 160);
+}
+
 function setupObserverComprobanteMovil() {
   const seccionComprobante = document.getElementById('posComprobanteSection');
-  if (!seccionComprobante || !('IntersectionObserver' in window)) return;
+  if (!seccionComprobante) return;
 
-  const observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        comprobanteVisibleEnPantalla = entry.isIntersecting;
-        actualizarBotonCarritoMovil();
-      });
-    },
-    { threshold: 0.25 }
-  );
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          comprobanteVisibleEnPantalla = entry.isIntersecting && entry.intersectionRatio >= 0.2;
+          actualizarBotonCarritoMovil();
+        });
+      },
+      { threshold: [0, 0.2, 0.5] }
+    );
+    observer.observe(seccionComprobante);
+  }
 
-  observer.observe(seccionComprobante);
+  const onScrollOrResize = () => {
+    evaluarVisibilidadComprobante();
+    actualizarBotonCarritoMovil();
+  };
+
+  window.addEventListener('scroll', onScrollOrResize, { passive: true });
+  window.addEventListener('resize', onScrollOrResize, { passive: true });
 }
 
 function actualizarBotonCarritoMovil() {
   const fab = document.getElementById('mobileCartFab');
   if (!fab) return;
+
+  evaluarVisibilidadComprobante();
 
   const cantidadTotal = carritoPOS.reduce((sum, item) => sum + item.cantidad, 0);
   const montoTotal = carritoPOS.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
@@ -248,7 +274,36 @@ function actualizarBotonCarritoMovil() {
 function irAComprobanteVenta() {
   const seccion = document.getElementById('posComprobanteSection');
   if (!seccion) return;
-  seccion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const header = document.querySelector('.top-header');
+  const offsetHeader = header ? header.getBoundingClientRect().height + 16 : 80;
+
+  // Intento 1: scrollIntoView estándar
+  try {
+    seccion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (_) {
+    seccion.scrollIntoView(true);
+  }
+
+  // Intento 2: cálculo directo en window y posibles contenedores con scroll (móvil / tablet / PC)
+  const targetY = Math.max(0, window.scrollY + seccion.getBoundingClientRect().top - offsetHeader);
+  window.scrollTo({ top: targetY, behavior: 'smooth' });
+
+  const mainContent = document.getElementById('mainContentArea');
+  if (mainContent && mainContent.scrollHeight > mainContent.clientHeight) {
+    const mainOffset = mainContent.scrollTop + seccion.getBoundingClientRect().top - mainContent.getBoundingClientRect().top - 16;
+    mainContent.scrollTo({ top: Math.max(0, mainOffset), behavior: 'smooth' });
+  }
+
+  // Enfocar el buscador de cliente o el comprobante tras llegar
+  setTimeout(() => {
+    const buscador = document.getElementById('posBuscadorCliente');
+    if (buscador && window.innerWidth <= 1024) {
+      buscador.focus({ preventScroll: true });
+    }
+    evaluarVisibilidadComprobante();
+    actualizarBotonCarritoMovil();
+  }, 450);
 }
 
 function setupNavegacion() {
@@ -562,7 +617,6 @@ function generarPDFCierreCaja({ ventas, alcanceTexto, fechaCierre, horaCierre, o
   const doc = new jsPDFClass({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
 
-  // Encabezado
   doc.setFillColor(15, 23, 42);
   doc.rect(0, 0, pageWidth, 28, 'F');
 
@@ -576,7 +630,6 @@ function generarPDFCierreCaja({ ventas, alcanceTexto, fechaCierre, horaCierre, o
   doc.text(`Alcance: ${alcanceTexto}`, 14, 21);
   doc.text(`Fecha de Cierre de Caja: ${fechaCierre}   |   Hora: ${horaCierre}`, pageWidth - 14, 21, { align: 'right' });
 
-  // Resumen financiero
   const totalGeneral = ventas.reduce((sum, v) => sum + Number(v.total || 0), 0);
   const totalEfectivo = ventas
     .filter(v => String(v.metodoPago ?? v.metodo_pago).toLowerCase() === 'efectivo')
@@ -610,7 +663,6 @@ function generarPDFCierreCaja({ ventas, alcanceTexto, fechaCierre, horaCierre, o
     startYTable = 54;
   }
 
-  // Filas de ventas
   const filas = ventas.map((v, idx) => {
     const sucId = v.sucursalId ?? v.sucursal_id;
     const cliId = v.clienteId ?? v.cliente_id;
@@ -696,7 +748,6 @@ async function ejecutarCierreCaja() {
   try {
     if (btnConfirmar) btnConfirmar.disabled = true;
 
-    // 1. Generar y descargar PDF antes de borrar
     generarPDFCierreCaja({
       ventas: ventasAEliminar,
       alcanceTexto: obtenerDescripcionAlcanceCierre(alcance),
@@ -705,7 +756,6 @@ async function ejecutarCierreCaja() {
       observaciones
     });
 
-    // 2. Eliminar ventas en Supabase
     if (alcance === 'todas') {
       const ids = ventasAEliminar.map(v => v.id).filter(Boolean);
       if (ids.length > 0) {
