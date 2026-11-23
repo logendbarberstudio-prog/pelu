@@ -654,7 +654,10 @@
         <input type="hidden" id="cliId">
         <div class="form-group"><label>Nombre</label><input type="text" id="cliNombre" class="form-control" required></div>
         <div class="form-group"><label>Teléfono</label><input type="text" id="cliTelefono" class="form-control" required></div>
-        <div class="form-group"><label>Servicios Acumulados (0 - 8)</label><input type="number" min="0" max="8" id="cliServiciosAcumulados" class="form-control" value="0"></div>
+        <div class="form-group" id="grupoServiciosAcumulados">
+          <label>Servicios Acumulados (0 - 8)</label>
+          <input type="number" min="0" max="8" id="cliServiciosAcumulados" class="form-control" value="0">
+        </div>
         <div class="form-group"><label>F. Nacimiento</label><input type="date" id="cliNacimiento" class="form-control"></div>
         <div class="form-group"><label>Notas</label><textarea id="cliNotas" class="form-control" rows="3"></textarea></div>
         <div class="modal-footer"><button type="submit" class="btn btn-primary">Guardar</button></div>

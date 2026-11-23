@@ -1556,7 +1556,7 @@ function renderizarClientes() {
           <td>${c.notas || '-'}</td>
           <td>
             <div style="display: flex; gap: 0.4rem;">
-              <button class="btn btn-primary btn-sm" onclick="abrirModalCliente('${c.id}')" title="Editar Cliente">
+              <button class="btn btn-primary btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="abrirModalCliente('${c.id}')" title="Editar Cliente">
                 <i class="fa-solid fa-pen"></i>
               </button>
               <button class="btn btn-danger btn-sm admin-only ${esSuperAdmin ? 'unlocked' : ''}" onclick="eliminarCliente('${c.id}')" title="Eliminar Cliente">
@@ -1572,9 +1572,15 @@ function renderizarClientes() {
 async function guardarCliente(e) {
   e.preventDefault();
   const id = document.getElementById('cliId').value;
+  if (id && !esSuperAdmin) {
+    return alert('Solo el Super Admin puede editar clientes existentes.');
+  }
+
   const nombre = document.getElementById('cliNombre').value;
   const telefono = document.getElementById('cliTelefono').value;
-  const serviciosAcumulados = Math.min(META_SERVICIOS_GRATIS, Math.max(0, parseInt(document.getElementById('cliServiciosAcumulados').value || '0', 10)));
+  const serviciosAcumulados = id
+    ? Math.min(META_SERVICIOS_GRATIS, Math.max(0, parseInt(document.getElementById('cliServiciosAcumulados').value || '0', 10)))
+    : 0;
   const nacimiento = document.getElementById('cliNacimiento').value;
   const notas = document.getElementById('cliNotas').value;
 
@@ -1653,9 +1659,16 @@ function abrirModalServicio(id = null) {
 }
 
 function abrirModalCliente(id = null) {
+  if (id && !esSuperAdmin) {
+    return alert('Solo el Super Admin puede editar clientes.');
+  }
+
+  const grupoAcumulados = document.getElementById('grupoServiciosAcumulados');
   document.getElementById('modalClienteTitulo').innerText = id ? 'Editar Cliente' : 'Registrar Cliente';
+
   if (id) {
     const c = appData.clientes.find(x => x.id === id);
+    if (grupoAcumulados) grupoAcumulados.style.display = 'block';
     document.getElementById('cliId').value = c.id;
     document.getElementById('cliNombre').value = c.nombre;
     document.getElementById('cliTelefono').value = c.telefono;
@@ -1663,6 +1676,7 @@ function abrirModalCliente(id = null) {
     document.getElementById('cliNacimiento').value = c.nacimiento || '';
     document.getElementById('cliNotas').value = c.notas || '';
   } else {
+    if (grupoAcumulados) grupoAcumulados.style.display = 'none';
     document.getElementById('cliId').value = '';
     document.getElementById('cliNombre').value = '';
     document.getElementById('cliTelefono').value = '';
