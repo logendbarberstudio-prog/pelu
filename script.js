@@ -62,11 +62,14 @@ async function cargarDatosDesdeSupabase() {
       supabaseClient.from('estilistas').select('*'),
       supabaseClient.from('servicios').select('*'),
       supabaseClient.from('productos').select('*'),
-      supabaseClient.from('clientes').select('*'),
+      supabaseClient.from('clientes').select('*').order('id', { ascending: false }),
       supabaseClient.from('ventas').select('*')
     ]);
 
     if (resSuc.error) throw resSuc.error;
+    if (resCli.error) {
+      console.error('Error al consultar clientes en Supabase:', resCli.error);
+    }
 
     if (!resSuc.data || resSuc.data.length === 0) {
       await inicializarDatosDefault();
@@ -128,24 +131,30 @@ async function cargarDatosDesdeSupabase() {
 
     appData.servicios = (resServ.data || []).map(s => ({ ...s, fechaCreacion: s.fecha_creacion, usosCount: s.usos_count }));
     appData.productos = (resProd.data || []).map(p => ({ ...p, sucursalId: p.sucursal_id, fechaCreacion: p.fecha_creacion }));
-    
+
     appData.clientes = (resCli.data || []).map(c => {
-      const localCount = parseInt(localStorage.getItem(`fidelidad_${c.id}`) || '0', 10);
-      const dbCount = c.servicios_acumulados !== undefined && c.servicios_acumulados !== null ? c.servicios_acumulados : localCount;
-      return { 
-        ...c, 
-        fechaCreacion: c.fecha_creacion,
+      const localCount = parseInt(localStorage.getItem(`fidelidad_${c.id}`) || '0', 10) || 0;
+      const rawDbCount = c.servicios_acumulados !== undefined && c.servicios_acumulados !== null
+        ? Number(c.servicios_acumulados)
+        : localCount;
+      const dbCount = Number.isNaN(rawDbCount) ? localCount : rawDbCount;
+
+      return {
+        ...c,
+        nombre: c.nombre || '',
+        telefono: c.telefono || '',
+        fechaCreacion: c.fecha_creacion || null,
         serviciosAcumulados: dbCount
       };
     });
 
-    appData.ventas = (resVentas.data || []).map(v => ({ 
-      ...v, 
-      sucursalId: v.sucursal_id, 
-      clienteId: v.cliente_id, 
-      estilistaId: v.estilista_id, 
-      metodoPago: v.metodo_pago, 
-      efectivoRecibido: v.efectivo_recibido 
+    appData.ventas = (resVentas.data || []).map(v => ({
+      ...v,
+      sucursalId: v.sucursal_id,
+      clienteId: v.cliente_id,
+      estilistaId: v.estilista_id,
+      metodoPago: v.metodo_pago,
+      efectivoRecibido: v.efectivo_recibido
     }));
 
   } catch (error) {
@@ -175,8 +184,8 @@ async function inicializarDatosDefault() {
     { id: 'p3', sucursal_id: 'suc_1', nombre: 'Shampoo Especial', categoria: 'Capilar', precio: 22.00, stock: 4, tipo: 'producto', fecha_creacion: '2026-02-01' }
   ];
   const defaultClientes = [
-   { id: 'c_imp_1', nombre: 'Erick Morocho', telefono: '0963026507', nacimiento: '2017-10-23', fecha_creacion: '2026-10-05', notas: '' },
-   { id: 'c_imp_2', nombre: 'Edwin Caguana', telefono: '0997046998', nacimiento: '2007-05-10', fecha_creacion: '2026-10-04', notas: '' }
+    { id: 'c_imp_1', nombre: 'Erick Morocho', telefono: '0963026507', nacimiento: '2017-10-23', fecha_creacion: '2026-10-05', servicios_acumulados: 0, notas: '' },
+    { id: 'c_imp_2', nombre: 'Edwin Caguana', telefono: '0997046998', nacimiento: '2007-05-10', fecha_creacion: '2026-10-04', servicios_acumulados: 0, notas: '' }
   ];
 
   await supabaseClient.from('sucursales').insert(defaultSucursales);
@@ -278,14 +287,12 @@ function irAComprobanteVenta() {
   const header = document.querySelector('.top-header');
   const offsetHeader = header ? header.getBoundingClientRect().height + 16 : 80;
 
-  // Intento 1: scrollIntoView estándar
   try {
     seccion.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (_) {
     seccion.scrollIntoView(true);
   }
 
-  // Intento 2: cálculo directo en window y posibles contenedores con scroll (móvil / tablet / PC)
   const targetY = Math.max(0, window.scrollY + seccion.getBoundingClientRect().top - offsetHeader);
   window.scrollTo({ top: targetY, behavior: 'smooth' });
 
@@ -295,7 +302,6 @@ function irAComprobanteVenta() {
     mainContent.scrollTo({ top: Math.max(0, mainOffset), behavior: 'smooth' });
   }
 
-  // Enfocar el buscador de cliente o el comprobante tras llegar
   setTimeout(() => {
     const buscador = document.getElementById('posBuscadorCliente');
     if (buscador && window.innerWidth <= 1024) {
@@ -379,7 +385,7 @@ async function validarPasswordSuperAdmin(e) {
     esSuperAdmin = true;
     cerrarModal('modalSuperAdminAuth');
     actualizarVisibilidadBotonesAdmin();
-    
+
     const superAdminBtn = document.querySelector('.nav-btn[data-tab="superadmin"]');
     activarPestana(superAdminBtn, 'superadmin');
 
@@ -407,7 +413,7 @@ function actualizarVisibilidadBotonesAdmin() {
   const badge = document.getElementById('badgeAdminActive');
   const btnCerrarHeader = document.getElementById('btnCerrarSuperAdmin');
   const icon = document.getElementById('adminStatusIcon');
-  
+
   if (esSuperAdmin) {
     if (badge) badge.style.display = 'inline-flex';
     if (btnCerrarHeader) btnCerrarHeader.style.display = 'inline-flex';
@@ -478,11 +484,11 @@ function renderizarModulo(modulo) {
     renderizarServiciosInventario();
   }
   if (modulo === 'clientes') renderizarClientes();
-  if (modulo === 'superadmin') { 
+  if (modulo === 'superadmin') {
     poblarFiltroReportesSucursal();
     poblarFiltroEstilistasAdminSucursal();
-    renderizarSuperAdmin(); 
-    renderizarDashboard(); 
+    renderizarSuperAdmin();
+    renderizarDashboard();
     actualizarGraficosSuperAdmin();
     renderizarEstilistasSuperAdmin();
   }
@@ -947,7 +953,7 @@ function renderizarSuperAdmin() {
                 </tr>
               </thead>
               <tbody>
-                ${ventasSuc.length === 0 ? `<tr><td colspan="5" class="text-center">Sin ventas en el rango seleccionado</td></tr>` : 
+                ${ventasSuc.length === 0 ? `<tr><td colspan="5" class="text-center">Sin ventas en el rango seleccionado</td></tr>` :
                   ventasSuc.slice(-5).reverse().map(v => `
                     <tr>
                       <td>${v.fecha}</td>
@@ -989,18 +995,18 @@ function actualizarGraficosSuperAdmin() {
 
   window.repChart1 = new Chart(document.getElementById('chartServiciosPopulares').getContext('2d'), {
     type: 'pie',
-    data: { 
-      labels: appData.servicios.map(s => s.nombre), 
-      datasets: [{ 
-        data: appData.servicios.map(s => s.usosCount || 0), 
-        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6'] 
-      }] 
+    data: {
+      labels: appData.servicios.map(s => s.nombre),
+      datasets: [{
+        data: appData.servicios.map(s => s.usosCount || 0),
+        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6']
+      }]
     },
     options: { responsive: true, maintainAspectRatio: false }
   });
 
-  const estilistasSucursal = filtroSucursal === 'todas' 
-    ? appData.estilistas 
+  const estilistasSucursal = filtroSucursal === 'todas'
+    ? appData.estilistas
     : appData.estilistas.filter(e => String(e.sucursalId) === String(filtroSucursal));
 
   const ventasPorEstilista = estilistasSucursal.map(e => {
@@ -1011,13 +1017,13 @@ function actualizarGraficosSuperAdmin() {
 
   window.repChart2 = new Chart(document.getElementById('chartEstilistasVentas').getContext('2d'), {
     type: 'bar',
-    data: { 
-      labels: estilistasSucursal.map(e => e.nombre), 
-      datasets: [{ 
-        label: 'Ventas ($)', 
-        data: ventasPorEstilista, 
-        backgroundColor: '#3b82f6' 
-      }] 
+    data: {
+      labels: estilistasSucursal.map(e => e.nombre),
+      datasets: [{
+        label: 'Ventas ($)',
+        data: ventasPorEstilista,
+        backgroundColor: '#3b82f6'
+      }]
     },
     options: { responsive: true, maintainAspectRatio: false }
   });
@@ -1032,16 +1038,16 @@ function actualizarGraficosSuperAdmin() {
 
   window.repChart3 = new Chart(document.getElementById('chartIngresosSemanales').getContext('2d'), {
     type: 'line',
-    data: { 
-      labels: fechasOrdenadas.length > 0 ? fechasOrdenadas : ['Sin datos'], 
-      datasets: [{ 
-        label: 'Ingresos ($)', 
-        data: totalesFechas.length > 0 ? totalesFechas : [0], 
+    data: {
+      labels: fechasOrdenadas.length > 0 ? fechasOrdenadas : ['Sin datos'],
+      datasets: [{
+        label: 'Ingresos ($)',
+        data: totalesFechas.length > 0 ? totalesFechas : [0],
         borderColor: '#10b981',
         backgroundColor: 'rgba(16, 185, 129, 0.1)',
         fill: true,
         tension: 0.2
-      }] 
+      }]
     },
     options: { responsive: true, maintainAspectRatio: false }
   });
@@ -1138,7 +1144,7 @@ function filtrarClientesPOS(query) {
   if (!dropdown) return;
 
   const texto = query.toLowerCase().trim();
-  
+
   if (texto === '') {
     dropdown.innerHTML = '';
     dropdown.classList.add('hidden');
@@ -1146,8 +1152,8 @@ function filtrarClientesPOS(query) {
     return;
   }
 
-  const coincidencias = appData.clientes.filter(c => 
-    c.nombre.toLowerCase().includes(texto) || (c.telefono && c.telefono.includes(texto))
+  const coincidencias = appData.clientes.filter(c =>
+    (c.nombre || '').toLowerCase().includes(texto) || (c.telefono && String(c.telefono).includes(texto))
   );
 
   if (coincidencias.length === 0) {
@@ -1160,9 +1166,9 @@ function filtrarClientesPOS(query) {
     const acum = c.serviciosAcumulados || 0;
     const pct = Math.round((acum / META_SERVICIOS_GRATIS) * 100);
     const tag = acum >= META_SERVICIOS_GRATIS ? '🎁 ¡CORTE GRATIS!' : `${pct}% (${acum}/8)`;
-    
+
     return `
-      <div class="client-dropdown-item" onclick="seleccionarClientePOS('${c.id}', '${c.nombre.replace(/'/g, "\\'")}')">
+      <div class="client-dropdown-item" onclick="seleccionarClientePOS('${c.id}', '${(c.nombre || '').replace(/'/g, "\\'")}')">
         <span><strong>${c.nombre}</strong> (${c.telefono || 'S/N'})</span>
         <small style="opacity: 0.8;">[${tag}]</small>
       </div>
@@ -1196,8 +1202,8 @@ async function actualizarFidelidadCliente(clienteId, nuevosServicios) {
   let totalAcumulado;
 
   if (actual >= META_SERVICIOS_GRATIS) {
-    totalAcumulado = nuevosServicios >= META_SERVICIOS_GRATIS 
-      ? META_SERVICIOS_GRATIS 
+    totalAcumulado = nuevosServicios >= META_SERVICIOS_GRATIS
+      ? META_SERVICIOS_GRATIS
       : nuevosServicios;
   } else {
     totalAcumulado = Math.min(META_SERVICIOS_GRATIS, actual + nuevosServicios);
@@ -1249,7 +1255,7 @@ function enviarWhatsAppCorteGratis(clienteId) {
   }
 
   const telefonoWA = formatearTelefonoWhatsApp(cliente.telefono);
-  const mensaje = 
+  const mensaje =
 `🎉✂️ *¡FELICIDADES ${cliente.nombre.toUpperCase()}!* 💈🎉
 
 Has completado tus *8 servicios (100%)* en *Leguend Barber Studio* y acabas de ganar un *¡CORTE COMPLETAMENTE GRATIS!* 🎁🔥
@@ -1290,7 +1296,7 @@ function enviarWhatsAppAgradecimiento(venta) {
     ? `\n🎁 *¡FELICIDADES! Completaste ${acumulados}/8 servicios (100%) y GANASTE UN CORTE GRATIS en tu próxima visita.* 🎉`
     : `\n⭐ *Progreso Corte Gratis:* ${acumulados}/8 servicios (${porcentaje}%)\n* Caducidad del premio* (En 6 meses desde su ultimo servicio) `;
 
-  const mensaje = 
+  const mensaje =
 `✂️ *LEGUEND BARBER STUDIO* 💈
 ¡Hola *${nombreCliente}*! Muchas gracias por tu visita y preferencia. 🙌
 
@@ -1315,7 +1321,7 @@ async function procesarPagoPOS() {
   if (carritoPOS.length === 0) return alert('El carrito está vacío');
   const total = carritoPOS.reduce((sum, i) => sum + (i.precio * i.cantidad), 0);
   const clienteId = document.getElementById('posClienteIdSeleccionado').value || null;
-  
+
   const cantidadServiciosComprados = carritoPOS
     .filter(item => item.tipo === 'servicio')
     .reduce((sum, item) => sum + item.cantidad, 0);
@@ -1332,13 +1338,13 @@ async function procesarPagoPOS() {
   };
 
   await supabaseClient.from('ventas').insert([venta]);
-  
-  const ventaLocal = { 
-    ...venta, 
-    sucursalId: venta.sucursal_id, 
-    clienteId: venta.cliente_id, 
-    estilistaId: venta.estilista_id, 
-    metodoPago: venta.metodo_pago 
+
+  const ventaLocal = {
+    ...venta,
+    sucursalId: venta.sucursal_id,
+    clienteId: venta.cliente_id,
+    estilistaId: venta.estilista_id,
+    metodoPago: venta.metodo_pago
   };
   appData.ventas.push(ventaLocal);
 
@@ -1349,7 +1355,7 @@ async function procesarPagoPOS() {
     const cli = appData.clientes.find(c => c.id === clienteId);
     ganoPremio = cli && (cli.serviciosAcumulados || 0) >= META_SERVICIOS_GRATIS;
   }
-  
+
   mostrarTicket(ventaLocal, ganoPremio);
   enviarWhatsAppAgradecimiento(ventaLocal);
 
@@ -1364,7 +1370,7 @@ async function procesarPagoPOS() {
 function mostrarTicket(v, ganoPremio = false) {
   document.getElementById('ticketSucursal').innerText = appData.sucursales.find(s => String(s.id) === String(v.sucursalId || v.sucursal_id))?.nombre || '';
   document.getElementById('ticketFechaHora').innerText = v.fecha;
-  
+
   const clienteId = v.clienteId || v.cliente_id;
   const clienteObj = appData.clientes.find(c => c.id === clienteId);
   document.getElementById('ticketCliente').innerText = clienteObj?.nombre || 'General';
@@ -1617,12 +1623,12 @@ async function eliminarServicio(id) {
 function renderizarClientes() {
   const tbody = document.getElementById('listaClientes');
   if (!tbody) return;
-  const busq = document.getElementById('buscarCliente').value.toLowerCase();
-  
+  const busq = (document.getElementById('buscarCliente')?.value || '').toLowerCase();
+
   tbody.innerHTML = appData.clientes
-    .filter(c => c.nombre.toLowerCase().includes(busq) || (c.telefono && c.telefono.includes(busq)))
+    .filter(c => (c.nombre || '').toLowerCase().includes(busq) || (c.telefono && String(c.telefono).includes(busq)))
     .map(c => {
-      const acumulados = Math.min(META_SERVICIOS_GRATIS, c.serviciosAcumulados || 0);
+      const acumulados = Math.min(META_SERVICIOS_GRATIS, Number(c.serviciosAcumulados) || 0);
       const porcentaje = Math.round((acumulados / META_SERVICIOS_GRATIS) * 100);
       const completo = acumulados >= META_SERVICIOS_GRATIS;
 
@@ -1653,8 +1659,8 @@ function renderizarClientes() {
 
       return `
         <tr>
-          <td><strong>${c.nombre}</strong></td>
-          <td>${c.telefono}</td>
+          <td><strong>${c.nombre || 'Sin nombre'}</strong></td>
+          <td>${c.telefono || '-'}</td>
           <td>${celdaFidelidad}</td>
           <td>${c.nacimiento || 'N/A'}</td>
           <td>${c.notas || '-'}</td>
@@ -1675,34 +1681,112 @@ function renderizarClientes() {
 
 async function guardarCliente(e) {
   e.preventDefault();
-  const id = document.getElementById('cliId').value;
+
+  if (!supabaseClient) {
+    alert('Error: Supabase no inicializado.');
+    return;
+  }
+
+  const id = document.getElementById('cliId').value.trim();
   if (id && !esSuperAdmin) {
     return alert('Solo el Super Admin puede editar clientes existentes.');
   }
 
-  const nombre = document.getElementById('cliNombre').value;
-  const telefono = document.getElementById('cliTelefono').value;
-  const serviciosAcumulados = id
-    ? Math.min(META_SERVICIOS_GRATIS, Math.max(0, parseInt(document.getElementById('cliServiciosAcumulados').value || '0', 10)))
-    : 0;
-  const nacimiento = document.getElementById('cliNacimiento').value;
-  const notas = document.getElementById('cliNotas').value;
+  const nombre = document.getElementById('cliNombre').value.trim();
+  const telefono = document.getElementById('cliTelefono').value.trim();
+  const nacimiento = document.getElementById('cliNacimiento').value || null;
+  const notas = document.getElementById('cliNotas').value.trim();
 
-  if (id) {
-    localStorage.setItem(`fidelidad_${id}`, serviciosAcumulados.toString());
-    await supabaseClient.from('clientes').update({ nombre, telefono, nacimiento, notas, servicios_acumulados: serviciosAcumulados }).eq('id', id);
-    const idx = appData.clientes.findIndex(c => c.id === id);
-    if (idx !== -1) appData.clientes[idx] = { ...appData.clientes[idx], nombre, telefono, nacimiento, notas, serviciosAcumulados };
-  } else {
-    const nuevoId = 'c_' + Date.now();
-    localStorage.setItem(`fidelidad_${nuevoId}`, serviciosAcumulados.toString());
-    const nuevo = { id: nuevoId, nombre, telefono, nacimiento, notas, servicios_acumulados: serviciosAcumulados };
-    await supabaseClient.from('clientes').insert([nuevo]);
-    appData.clientes.push({ ...nuevo, serviciosAcumulados });
+  if (!nombre || !telefono) {
+    return alert('Nombre y teléfono son obligatorios.');
   }
-  cerrarModal('modalCliente');
-  renderizarClientes();
-  poblarSelects();
+
+  try {
+    if (id) {
+      const acumuladosEdit = Math.min(
+        META_SERVICIOS_GRATIS,
+        Math.max(0, parseInt(document.getElementById('cliServiciosAcumulados')?.value || '0', 10) || 0)
+      );
+
+      let { error } = await supabaseClient
+        .from('clientes')
+        .update({ nombre, telefono, nacimiento, notas, servicios_acumulados: acumuladosEdit })
+        .eq('id', id);
+
+      if (error && error.message && error.message.toLowerCase().includes('servicios_acumulados')) {
+        const resSinAcum = await supabaseClient
+          .from('clientes')
+          .update({ nombre, telefono, nacimiento, notas })
+          .eq('id', id);
+        error = resSinAcum.error;
+      }
+
+      if (error) {
+        console.error('Error al actualizar cliente:', error);
+        return alert('No se pudo actualizar el cliente: ' + error.message);
+      }
+
+      localStorage.setItem(`fidelidad_${id}`, String(acumuladosEdit));
+
+      const idx = appData.clientes.findIndex(c => String(c.id) === String(id));
+      if (idx !== -1) {
+        appData.clientes[idx] = {
+          ...appData.clientes[idx],
+          nombre,
+          telefono,
+          nacimiento,
+          notas,
+          serviciosAcumulados: acumuladosEdit
+        };
+      }
+    } else {
+      const nuevoId = 'c_' + Date.now();
+      const fechaCreacion = new Date().toISOString().split('T')[0];
+      const nuevo = {
+        id: nuevoId,
+        nombre,
+        telefono,
+        nacimiento,
+        notas,
+        fecha_creacion: fechaCreacion,
+        servicios_acumulados: 0
+      };
+
+      let { error } = await supabaseClient
+        .from('clientes')
+        .insert([nuevo]);
+
+      if (error && error.message && error.message.toLowerCase().includes('servicios_acumulados')) {
+        const { servicios_acumulados: _sa, ...sinServicios } = nuevo;
+        const resFallback = await supabaseClient
+          .from('clientes')
+          .insert([sinServicios]);
+        error = resFallback.error;
+      }
+
+      if (error) {
+        console.error('Error al guardar cliente:', error);
+        return alert('No se pudo guardar el cliente: ' + error.message);
+      }
+
+      localStorage.setItem(`fidelidad_${nuevoId}`, '0');
+      appData.clientes.unshift({
+        ...nuevo,
+        fechaCreacion,
+        serviciosAcumulados: 0
+      });
+    }
+
+    const buscador = document.getElementById('buscarCliente');
+    if (buscador) buscador.value = '';
+
+    cerrarModal('modalCliente');
+    renderizarClientes();
+    poblarSelects();
+  } catch (err) {
+    console.error('Error inesperado al guardar cliente:', err);
+    alert('Ocurrió un error al guardar el cliente: ' + (err.message || err));
+  }
 }
 
 async function eliminarCliente(id) {
@@ -1832,7 +1916,7 @@ function poblarSelects() {
   if (inputIdCli) inputIdCli.value = '';
 
   if (posEst) {
-    posEst.innerHTML = `<option value="">Sin Asignar</option>` + 
+    posEst.innerHTML = `<option value="">Sin Asignar</option>` +
       estSuc.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
   }
 }
